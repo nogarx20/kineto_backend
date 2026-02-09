@@ -1,42 +1,48 @@
 
-import { UserRepository } from './users.repository';
-import { hashPassword, comparePassword } from '../../utils/password';
-import { generateUUID } from '../../utils/uuid';
-import { generateToken } from '../../utils/jwt';
+import pool from '../../config/database';
 
-export class UserService {
-  private repository = new UserRepository();
-
-  async authenticate(companyId: string, email: string, pass: string) {
-    const user = await this.repository.findByEmail(companyId, email);
-    if (!user || !user.is_active) throw new Error('Credenciales inválidas');
-
-    const isValid = await comparePassword(pass, user.password);
-    if (!isValid) throw new Error('Credenciales inválidas');
-
-    const token = generateToken({
-      id: user.id,
-      company_id: user.company_id,
-      email: user.email
-    });
-
-    return { token, user: { id: user.id, firstName: user.first_name, lastName: user.last_name } };
+export class UserRepository {
+  async findByEmail(companyId: string, email: string) {
+    const [rows]: any = await pool.execute(
+      'SELECT * FROM users WHERE company_id = ? AND email = ?',
+      [companyId, email]
+    );
+    return rows[0];
   }
 
-  async createUser(data: any) {
-    const existing = await this.repository.findByEmail(data.company_id, data.email);
-    if (existing) throw new Error('Email ya registrado en esta empresa');
+  async findAllByEmailGlobal(email: string) {
+    const [rows]: any = await pool.execute(
+      `SELECT u.*, c.name as company_name 
+       FROM users u 
+       JOIN companies c ON u.company_id = c.id 
+       WHERE u.email = ?`,
+      [email]
+    );
+    return rows;
+  }
 
-    const hashedPassword = await hashPassword(data.password);
-    const id = generateUUID();
+  async findById(companyId: string, id: string) {
+    const [rows]: any = await pool.execute(
+      'SELECT id, company_id, email, first_name, last_name, is_active, createdAt FROM users WHERE company_id = ? AND id = ?',
+      [companyId, id]
+    );
+    return rows[0];
+  }
 
-    const userData = { ...data, id, password: hashedPassword };
-    await this.repository.create(userData);
-
+  async create(user: any) {
+    const { id, company_id, email, password, first_name, last_name } = user;
+    await pool.execute(
+      'INSERT INTO users (id, company_id, email, password, first_name, last_name) VALUES (?, ?, ?, ?, ?, ?)',
+      [id, company_id, email, password, first_name, last_name]
+    );
     return id;
   }
 
-  async getUsers(companyId: string) {
-    return await this.repository.listByCompany(companyId);
+  async listByCompany(companyId: string) {
+    const [rows]: any = await pool.execute(
+      'SELECT id, email, first_name, last_name, is_active, createdAt FROM users WHERE company_id = ?',
+      [companyId]
+    );
+    return rows;
   }
 }
