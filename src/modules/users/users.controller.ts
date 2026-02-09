@@ -33,10 +33,25 @@ export class UserController {
     }
   }
 
+  async logout(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      await logAudit(req, 'LOGOUT_SUCCESS', 'users', user?.id);
+      (res as any).json({ success: true });
+    } catch (err: any) {
+      (res as any).status(500).json({ error: err.message });
+    }
+  }
+
   async forgotPassword(req: Request, res: Response) {
     try {
         const { email } = (req as any).body;
         const result = await userService.forgotPassword(email);
+        
+        // Log de auditoría para la solicitud de recuperación
+        const fakeReq = { user: { id: null, company_id: null }, ip: (req as any).ip } as any;
+        await logAudit(fakeReq, 'PASSWORD_RECOVERY_REQUEST', 'users', email, { email });
+        
         (res as any).json(result);
     } catch (err: any) {
         (res as any).status(200).json({ success: true, message: 'Si el correo existe, recibirá instrucciones.' });
