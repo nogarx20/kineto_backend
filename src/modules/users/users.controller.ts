@@ -11,18 +11,17 @@ export class UserController {
     const { companyId, email, password } = (req as any).body;
 
     try {
-      const result = await userService.authenticate(companyId, email, password);
+      const result = await userService.authenticate(email, password, companyId);
       
-      // Auditoría: Login Exitoso
-      // Creamos un contexto falso ya que el middleware de auth no ha corrido aún
-      const fakeReq = { user: { id: result.user.id, company_id: companyId }, ip: (req as any).ip } as any;
-      await logAudit(fakeReq, 'LOGIN_SUCCESS', 'users', result.user.id, { email });
+      // Si el resultado es un login directo (token presente)
+      if ((result as any).token) {
+        const fakeReq = { user: { id: (result as any).user.id, company_id: (result as any).company_id || companyId }, ip: (req as any).ip } as any;
+        await logAudit(fakeReq, 'LOGIN_SUCCESS', 'users', (result as any).user.id, { email });
+      }
 
       (res as any).json(result);
     } catch (err: any) {
-      // Auditoría: Login Fallido
-      // Registramos el intento fallido asociado a la empresa y al email intentado
-      const fakeReq = { user: { id: null, company_id: companyId }, ip: (req as any).ip } as any;
+      const fakeReq = { user: { id: null, company_id: companyId || 'GLOBAL' }, ip: (req as any).ip } as any;
       await logAudit(fakeReq, 'LOGIN_FAILED', 'users', email, { error: err.message });
 
       (res as any).status(401).json({ error: 'Credenciales inválidas o usuario inactivo' });
