@@ -15,14 +15,31 @@ export class UserController {
       
       // Si el resultado es un login directo (token presente)
       if ((result as any).token) {
-        const fakeReq = { user: { id: (result as any).user.id, company_id: (result as any).company_id || companyId }, ip: (req as any).ip } as any;
-        await logAudit(fakeReq, 'LOGIN_SUCCESS', 'users', (result as any).user.id, { email });
+        // En caso de éxito, el company_id viene del usuario autenticado
+        const userFound = (result as any).user;
+        const compId = (result as any).company_id || (result as any).options?.[0]?.company_id || companyId;
+        
+        const fakeReq = { 
+          user: { id: userFound.id, company_id: compId }, 
+          ip: (req as any).ip 
+        } as any;
+        
+        await logAudit(fakeReq, 'LOGIN_SUCCESS', 'users', userFound.id, { email });
+      } else if ((result as any).multiple) {
+        // Logueamos que el usuario llegó a la selección de empresas
+        const fakeReq = { user: { id: null, company_id: null }, ip: (req as any).ip } as any;
+        await logAudit(fakeReq, 'LOGIN_MULTIPLE_STEP', 'users', email, { email });
       }
 
       (res as any).json(result);
     } catch (err: any) {
-      const fakeReq = { user: { id: null, company_id: companyId || 'GLOBAL' }, ip: (req as any).ip } as any;
-      await logAudit(fakeReq, 'LOGIN_FAILED', 'users', email, { error: err.message });
+      // Intento fallido: Registrar auditoría global
+      const fakeReq = { 
+        user: { id: null, company_id: null }, // Usamos null para que el middleware lo procese como log de sistema
+        ip: (req as any).ip 
+      } as any;
+      
+      await logAudit(fakeReq, 'LOGIN_FAILED', 'users', email, { error: err.message, attemptedEmail: email });
 
       (res as any).status(401).json({ error: 'Credenciales inválidas o usuario inactivo' });
     }
