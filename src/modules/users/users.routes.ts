@@ -9,6 +9,7 @@ const router = Router();
 const controller = new UserController();
 
 router.post('/login', controller.login);
+router.post('/logout', authMiddleware, controller.logout); // Nueva ruta
 router.post('/forgot-password', controller.forgotPassword);
 
 router.get('/', 
