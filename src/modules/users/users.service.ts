@@ -4,57 +4,59 @@ import { hashPassword, comparePassword } from '../../utils/password';
 import { generateUUID } from '../../utils/uuid';
 import { generateToken } from '../../utils/jwt';
 
+const MAX_FAILED_ATTEMPTS = 5;
+
 export class UserService {
   private repository = new UserRepository();
 
   async authenticate(email: string, pass: string, companyId?: string) {
-    // Si se provee companyId, mantenemos el comportamiento original por compatibilidad
-    if (companyId) {
-      const user = await this.repository.findByEmail(companyId, email);
-      if (!user || !user.is_active) throw new Error('Credenciales inválidas');
-      const isValid = await comparePassword(pass, user.password);
-      if (!isValid) throw new Error('Credenciales inválidas');
+    // Buscar usuarios asociados al email
+    const users = companyId 
+        ? [await this.repository.findByEmail(companyId, email)]
+        : await this.repository.findAllByEmailGlobal(email);
 
-      const token = generateToken({
-        id: user.id,
-        company_id: user.company_id,
-        email: user.email
-      });
+    if (!users || users.length === 0 || !users[0]) throw new Error('Credenciales inválidas');
 
-      return { token, user: { id: user.id, firstName: user.first_name, lastName: user.last_name } };
-    }
-
-    // Login global: Buscar todas las cuentas asociadas al email
-    const users = await this.repository.findAllByEmailGlobal(email);
-    if (!users || users.length === 0) throw new Error('Credenciales inválidas');
-
-    // Filtrar usuarios con password válido
     const validLogins = [];
     for (const user of users) {
       if (!user.is_active) continue;
+
+      // Verificar si está bloqueado
+      if (user.is_locked) {
+        throw new Error('Cuenta bloqueada por seguridad. Contacte al administrador.');
+      }
+
       const isValid = await comparePassword(pass, user.password);
+      
       if (isValid) {
+        // Exito: Resetear intentos
+        await this.repository.resetAttempts(user.id);
+        
         const token = generateToken({
           id: user.id,
           company_id: user.company_id,
           email: user.email
         });
+        
         validLogins.push({
           token,
           companyName: user.company_name,
           user: { id: user.id, firstName: user.first_name, lastName: user.last_name }
         });
+      } else {
+        // Fallo: Incrementar intentos
+        await this.repository.incrementFailedAttempts(user.id);
+        
+        // Verificar si debemos bloquear
+        if (user.failed_attempts + 1 >= MAX_FAILED_ATTEMPTS) {
+          await this.repository.lockAccount(user.id);
+          throw new Error('La cuenta ha sido bloqueada tras 5 intentos fallidos.');
+        }
       }
     }
 
     if (validLogins.length === 0) throw new Error('Credenciales inválidas');
-
-    // Si solo hay un acceso válido, retornarlo directamente
-    if (validLogins.length === 1) {
-      return validLogins[0];
-    }
-
-    // Si hay múltiples accesos, retornar la lista para que el cliente elija
+    if (validLogins.length === 1) return validLogins[0];
     return { multiple: true, options: validLogins };
   }
 
@@ -73,5 +75,23 @@ export class UserService {
 
   async getUsers(companyId: string) {
     return await this.repository.listByCompany(companyId);
+  }
+
+  async unlockUser(companyId: string, userId: string) {
+    const user = await this.repository.findById(companyId, userId);
+    if (!user) throw new Error('Usuario no encontrado');
+    await this.repository.resetAttempts(userId);
+    return { success: true };
+  }
+
+  async forgotPassword(email: string) {
+    const user = await this.repository.findGlobalByEmail(email);
+    if (!user) throw new Error('Si el correo existe en nuestro sistema, recibirá instrucciones.');
+    
+    // SIMULACION: En un entorno real enviaríamos un email con sendgrid/aws ses.
+    console.log(`[SIMULACION EMAIL] Enviando password a ${email}. Password: (Hasheada en DB)`);
+    
+    // Por el momento, informamos que se envió un mensaje.
+    return { success: true, message: 'Se ha enviado la información a su correo electrónico.' };
   }
 }
