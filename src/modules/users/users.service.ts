@@ -1,48 +1,77 @@
 
-import pool from '../../config/database';
+import { UserRepository } from './users.repository';
+import { hashPassword, comparePassword } from '../../utils/password';
+import { generateUUID } from '../../utils/uuid';
+import { generateToken } from '../../utils/jwt';
 
-export class UserRepository {
-  async findByEmail(companyId: string, email: string) {
-    const [rows]: any = await pool.execute(
-      'SELECT * FROM users WHERE company_id = ? AND email = ?',
-      [companyId, email]
-    );
-    return rows[0];
+export class UserService {
+  private repository = new UserRepository();
+
+  async authenticate(email: string, pass: string, companyId?: string) {
+    // Si se provee companyId, mantenemos el comportamiento original por compatibilidad
+    if (companyId) {
+      const user = await this.repository.findByEmail(companyId, email);
+      if (!user || !user.is_active) throw new Error('Credenciales inválidas');
+      const isValid = await comparePassword(pass, user.password);
+      if (!isValid) throw new Error('Credenciales inválidas');
+
+      const token = generateToken({
+        id: user.id,
+        company_id: user.company_id,
+        email: user.email
+      });
+
+      return { token, user: { id: user.id, firstName: user.first_name, lastName: user.last_name } };
+    }
+
+    // Login global: Buscar todas las cuentas asociadas al email
+    const users = await this.repository.findAllByEmailGlobal(email);
+    if (!users || users.length === 0) throw new Error('Credenciales inválidas');
+
+    // Filtrar usuarios con password válido
+    const validLogins = [];
+    for (const user of users) {
+      if (!user.is_active) continue;
+      const isValid = await comparePassword(pass, user.password);
+      if (isValid) {
+        const token = generateToken({
+          id: user.id,
+          company_id: user.company_id,
+          email: user.email
+        });
+        validLogins.push({
+          token,
+          companyName: user.company_name,
+          user: { id: user.id, firstName: user.first_name, lastName: user.last_name }
+        });
+      }
+    }
+
+    if (validLogins.length === 0) throw new Error('Credenciales inválidas');
+
+    // Si solo hay un acceso válido, retornarlo directamente
+    if (validLogins.length === 1) {
+      return validLogins[0];
+    }
+
+    // Si hay múltiples accesos, retornar la lista para que el cliente elija
+    return { multiple: true, options: validLogins };
   }
 
-  async findAllByEmailGlobal(email: string) {
-    const [rows]: any = await pool.execute(
-      `SELECT u.*, c.name as company_name 
-       FROM users u 
-       JOIN companies c ON u.company_id = c.id 
-       WHERE u.email = ?`,
-      [email]
-    );
-    return rows;
-  }
+  async createUser(data: any) {
+    const existing = await this.repository.findByEmail(data.company_id, data.email);
+    if (existing) throw new Error('Email ya registrado en esta empresa');
 
-  async findById(companyId: string, id: string) {
-    const [rows]: any = await pool.execute(
-      'SELECT id, company_id, email, first_name, last_name, is_active, createdAt FROM users WHERE company_id = ? AND id = ?',
-      [companyId, id]
-    );
-    return rows[0];
-  }
+    const hashedPassword = await hashPassword(data.password);
+    const id = generateUUID();
 
-  async create(user: any) {
-    const { id, company_id, email, password, first_name, last_name } = user;
-    await pool.execute(
-      'INSERT INTO users (id, company_id, email, password, first_name, last_name) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, company_id, email, password, first_name, last_name]
-    );
+    const userData = { ...data, id, password: hashedPassword };
+    await this.repository.create(userData);
+
     return id;
   }
 
-  async listByCompany(companyId: string) {
-    const [rows]: any = await pool.execute(
-      'SELECT id, email, first_name, last_name, is_active, createdAt FROM users WHERE company_id = ?',
-      [companyId]
-    );
-    return rows;
+  async getUsers(companyId: string) {
+    return await this.repository.listByCompany(companyId);
   }
 }
