@@ -8,6 +8,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ✅ RUTA RAÍZ
+app.get("/", (_req, res) => {
+  res.send("Backend Kineto OK");
+});
+
 // Routes
 app.use('/api/v1/users', userRoutes);
 
