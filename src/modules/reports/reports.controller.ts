@@ -14,4 +14,14 @@ export class ReportsController {
       (res as any).status(500).json({ error: err.message });
     }
   }
+
+  async getAuditLogs(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const logs = await service.getAuditLogs(user.company_id);
+      (res as any).json(logs);
+    } catch (err: any) {
+      (res as any).status(500).json({ error: err.message });
+    }
+  }
 }
