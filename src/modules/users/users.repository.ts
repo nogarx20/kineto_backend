@@ -10,6 +10,17 @@ export class UserRepository {
     return rows[0];
   }
 
+  async findAllByEmailGlobal(email: string) {
+    const [rows]: any = await pool.execute(
+      `SELECT u.*, c.name as company_name 
+       FROM users u 
+       JOIN companies c ON u.company_id = c.id 
+       WHERE u.email = ?`,
+      [email]
+    );
+    return rows;
+  }
+
   async findById(companyId: string, id: string) {
     const [rows]: any = await pool.execute(
       'SELECT id, company_id, email, first_name, last_name, is_active, createdAt FROM users WHERE company_id = ? AND id = ?',
