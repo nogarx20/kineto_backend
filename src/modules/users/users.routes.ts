@@ -9,6 +9,7 @@ const router = Router();
 const controller = new UserController();
 
 router.post('/login', controller.login);
+router.post('/forgot-password', controller.forgotPassword);
 
 router.get('/', 
   authMiddleware, 
@@ -22,6 +23,13 @@ router.post('/',
   tenantMiddleware, 
   rbacMiddleware('users.create'), 
   controller.create
+);
+
+router.post('/:id/unlock',
+  authMiddleware,
+  tenantMiddleware,
+  rbacMiddleware('users.update'),
+  controller.unlock
 );
 
 export default router;
