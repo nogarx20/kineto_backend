@@ -11,5 +11,6 @@ const controller = new ReportsController();
 router.use(authMiddleware, tenantMiddleware);
 
 router.get('/stats', rbacMiddleware('reports.view'), controller.getStats);
+router.get('/audit-logs', rbacMiddleware('settings.manage'), controller.getAuditLogs);
 
 export default router;
