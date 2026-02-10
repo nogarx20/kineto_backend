@@ -92,25 +92,43 @@ export class UserController {
   async delete(req: Request, res: Response) {
     try {
       const { id } = (req as any).params;
-      const user = (req as any).user;
+      const adminUser = (req as any).user;
 
       const [rows]: any = await pool.execute('SELECT * FROM users WHERE id = ?', [id]);
       if (rows.length === 0) throw new Error('Usuario no encontrado');
+      const targetUser = rows[0];
 
-      const [logCheck]: any = await pool.execute('SELECT COUNT(*) as log_count FROM system_logs WHERE user_id = ?', [id]);
-      if (logCheck[0].log_count > 0) {
+      // Verificación de integridad en múltiples tablas
+      const checks = [
+        { table: 'user_roles', label: 'Perfiles de Rol Asignados', query: 'SELECT COUNT(*) as count FROM user_roles WHERE user_id = ?' },
+        { table: 'user_permissions', label: 'Privilegios Directos Configurados', query: 'SELECT COUNT(*) as count FROM user_permissions WHERE user_id = ?' },
+        { table: 'system_logs', label: 'Historial de Auditoría Forense', query: 'SELECT COUNT(*) as count FROM system_logs WHERE user_id = ?' }
+      ];
+
+      const activeReferences = [];
+      for (const check of checks) {
+        const [result]: any = await pool.execute(check.query, [id]);
+        if (result[0].count > 0) {
+          activeReferences.push(`${check.label} (${result[0].count} registros)`);
+        }
+      }
+
+      if (activeReferences.length > 0) {
         return (res as any).status(400).json({ 
-          error: 'Restricción de Integridad Forense',
-          message: 'Este usuario posee registros históricos en la bitácora de auditoría y no puede ser eliminado para garantizar la trazabilidad inalterable de las acciones del sistema. Le recomendamos bloquear la cuenta para suspender el acceso sin perder los datos de cumplimiento.' 
+          error: 'Restricción de Integridad Referencial',
+          message: `No es posible eliminar a ${targetUser.first_name} ${targetUser.last_name} porque el sistema detectó dependencias activas que deben preservarse para mantener la trazabilidad. Las referencias encontradas son:\n\n` + 
+                   activeReferences.map(ref => `• ${ref}`).join('\n') + 
+                   `\n\nLe recomendamos marcar la cuenta como "Bloqueada" en lugar de eliminarla para suspender el acceso sin afectar la integridad de los datos históricos.`
         });
       }
 
-      await pool.execute('DELETE FROM users WHERE id = ? AND company_id = ?', [id, user.company_id]);
+      // Si pasa los checks, se procede al borrado lógico/físico según política (aquí físico si no hay logs)
+      await pool.execute('DELETE FROM users WHERE id = ? AND company_id = ?', [id, adminUser.company_id]);
       
-      await logAudit(req, 'DELETE', 'users', id, { deleted_record: rows[0] });
+      await logAudit(req, 'DELETE', 'users', id, { deleted_record: targetUser });
       (res as any).json({ success: true });
     } catch (err: any) {
-      (res as any).status(403).json({ error: err.message });
+      (res as any).status(400).json({ error: err.message });
     }
   }
 
@@ -147,7 +165,6 @@ export class UserController {
     } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
   }
 
-  // MÉTODO PARA GESTIÓN: Solo permisos directos
   async getPermissions(req: Request, res: Response) {
     try {
       const { id } = (req as any).params;
@@ -162,7 +179,6 @@ export class UserController {
     } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
   }
 
-  // MÉTODO PARA LOGIN: Unión de directos + roles (Efectivos)
   async getEffectivePermissions(req: Request, res: Response) {
     try {
       const { id } = (req as any).params;
