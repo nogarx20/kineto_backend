@@ -97,7 +97,6 @@ export class UserController {
       const [rows]: any = await pool.execute('SELECT * FROM users WHERE id = ?', [id]);
       if (rows.length === 0) throw new Error('Usuario no encontrado');
 
-      // Verificación estricta de logs para integridad técnica
       const [logCheck]: any = await pool.execute('SELECT COUNT(*) as log_count FROM system_logs WHERE user_id = ?', [id]);
       if (logCheck[0].log_count > 0) {
         return (res as any).status(400).json({ 
@@ -148,11 +147,10 @@ export class UserController {
     } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
   }
 
+  // MÉTODO PARA GESTIÓN: Solo permisos directos
   async getPermissions(req: Request, res: Response) {
     try {
       const { id } = (req as any).params;
-      // CONSULTA MODIFICADA: Ahora solo verifica asignaciones directas en user_permissions
-      // Los permisos de perfiles (roles) se gestionan en su propio módulo
       const [rows]: any = await pool.execute(`
         SELECT p.*, 
         EXISTS(SELECT 1 FROM user_permissions up WHERE up.user_id = ? AND up.permission_id = p.id) as assigned
@@ -161,6 +159,29 @@ export class UserController {
       `, [id]);
       
       (res as any).json(rows);
+    } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
+  }
+
+  // MÉTODO PARA LOGIN: Unión de directos + roles (Efectivos)
+  async getEffectivePermissions(req: Request, res: Response) {
+    try {
+      const { id } = (req as any).params;
+      const [rows]: any = await pool.execute(`
+        SELECT DISTINCT p.code
+        FROM permissions p
+        WHERE EXISTS (
+            SELECT 1 FROM role_permissions rp
+            JOIN user_roles ur ON rp.role_id = ur.role_id
+            WHERE ur.user_id = ? AND rp.permission_id = p.id
+        )
+        OR EXISTS (
+            SELECT 1 FROM user_permissions up
+            WHERE up.user_id = ? AND up.permission_id = p.id
+        )
+      `, [id, id]);
+      
+      const codes = rows.map((r: any) => r.code);
+      (res as any).json(codes);
     } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
   }
 
