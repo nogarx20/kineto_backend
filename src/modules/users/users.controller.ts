@@ -28,7 +28,7 @@ export class UserController {
   async create(req: Request, res: Response) {
     try {
       const user = (req as any).user;
-      const { email, password, first_name, last_name, collaborator_id } = (req as any).body;
+      const { email, password, first_name, last_name, collaborator_id, role_ids } = (req as any).body;
       
       const id = await userService.createUser({
         company_id: user.company_id,
@@ -38,6 +38,13 @@ export class UserController {
         last_name,
         collaborator_id: collaborator_id || null
       });
+
+      // Asignar roles iniciales
+      if (role_ids && role_ids.length > 0) {
+        for (const rId of role_ids) {
+          await pool.execute('INSERT IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)', [id, rId]);
+        }
+      }
 
       await logAudit(req, 'CREATE', 'users', id, { email });
       (res as any).status(201).json({ id });
@@ -49,7 +56,7 @@ export class UserController {
   async update(req: Request, res: Response) {
     try {
       const { id } = (req as any).params;
-      const { email, first_name, last_name, collaborator_id, is_locked } = (req as any).body;
+      const { email, first_name, last_name, collaborator_id, is_locked, role_ids } = (req as any).body;
       const user = (req as any).user;
 
       await pool.execute(`
@@ -66,6 +73,14 @@ export class UserController {
         user.company_id
       ]);
 
+      // Sincronizar Roles
+      if (role_ids) {
+        await pool.execute('DELETE FROM user_roles WHERE user_id = ?', [id]);
+        for (const rId of role_ids) {
+          await pool.execute('INSERT IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)', [id, rId]);
+        }
+      }
+
       await logAudit(req, 'UPDATE', 'users', id, { email, status: is_locked ? 'LOCKED' : 'ACTIVE' });
       (res as any).json({ success: true });
     } catch (err: any) {
@@ -80,18 +95,17 @@ export class UserController {
 
       if (id === user.id) throw new Error('No puedes auto-eliminarte del sistema.');
 
-      // Validar si tiene bitácora de auditoría (Acciones reales más allá de la creación)
+      // Validar si tiene bitácora de auditoría real
       const [logs]: any = await pool.execute('SELECT COUNT(*) as count FROM system_logs WHERE user_id = ? AND action NOT IN ("CREATE", "LOGIN_SUCCESS")', [id]);
       
       if (logs[0].count > 0) {
-        throw new Error('RESTRICCION_AUDITORIA: El usuario posee historial transaccional.');
+        throw new Error('RESTRICCION_AUDITORIA: El usuario posee historial transaccional inamovible.');
       }
 
       await pool.execute('DELETE FROM users WHERE id = ? AND company_id = ?', [id, user.company_id]);
       await logAudit(req, 'DELETE', 'users', id);
       (res as any).json({ success: true });
     } catch (err: any) {
-      // Devolvemos 403 para indicar que es una restricción de reglas de negocio/seguridad
       (res as any).status(403).json({ error: err.message });
     }
   }
@@ -115,9 +129,9 @@ export class UserController {
     try {
       const { id } = (req as any).params;
       const [rows]: any = await pool.execute(`
-        SELECT p.id, p.code, p.module, p.description, 
+        SELECT p.id, p.name, p.code, p.module, p.description, 
         EXISTS(SELECT 1 FROM user_permissions up WHERE up.user_id = ? AND up.permission_id = p.id) as is_direct
-        FROM permissions p ORDER BY p.module, p.description
+        FROM permissions p ORDER BY p.module, p.name
       `, [id]);
       (res as any).json(rows);
     } catch (err: any) {
@@ -146,12 +160,19 @@ export class UserController {
     try {
       const user = (req as any).user;
       const [rows]: any = await pool.execute(`
-        SELECT u.*, c.identification as collab_id_card 
+        SELECT u.*, c.identification as collab_id_card,
+        (SELECT GROUP_CONCAT(role_id) FROM user_roles WHERE user_id = u.id) as role_ids_str
         FROM users u 
         LEFT JOIN collaborators c ON u.collaborator_id = c.id 
         WHERE u.company_id = ?
       `, [user.company_id]);
-      (res as any).json(rows);
+      
+      const usersWithRoles = rows.map((u: any) => ({
+        ...u,
+        role_ids: u.role_ids_str ? u.role_ids_str.split(',') : []
+      }));
+      
+      (res as any).json(usersWithRoles);
     } catch (err: any) {
       (res as any).status(500).json({ error: err.message });
     }
