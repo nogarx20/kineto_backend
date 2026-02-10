@@ -38,12 +38,29 @@ export class CollaboratorRepository {
 
   async update(id: string, companyId: string, data: any) {
     const { identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, is_active } = data;
+    
+    const updates = [
+        'identification = ?', 'first_name = ?', 'last_name = ?', 'email = ?', 
+        'phone = ?', 'address = ?', 'gender = ?', 'birth_date = ?', 
+        'username = ?', 'is_active = ?'
+    ];
+    const params: any[] = [
+        identification, first_name, last_name, email, phone, 
+        address, gender, birth_date, username, is_active ? 1 : 0
+    ];
+
+    if (password !== undefined && password !== null) {
+        updates.push('password = ?');
+        params.push(password);
+    }
+
+    params.push(id, companyId);
+    
     await pool.execute(`
       UPDATE collaborators 
-      SET identification = ?, first_name = ?, last_name = ?, email = ?, phone = ?, 
-          address = ?, gender = ?, birth_date = ?, username = ?, password = ?, is_active = ?
+      SET ${updates.join(', ')}
       WHERE id = ? AND company_id = ?
-    `, [identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, is_active ? 1 : 0, id, companyId]);
+    `, params);
   }
 
   async delete(id: string, companyId: string) {
