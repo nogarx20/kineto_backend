@@ -26,7 +26,7 @@ export class RoleController {
       const id = generateUUID();
       
       await pool.execute('INSERT INTO roles (id, company_id, name, description) VALUES (?, ?, ?, ?)', [
-        id, user.company_id, body.name, body.description
+        id, user.company_id, body.name, body.description || null
       ]);
 
       await logAudit(req, 'CREATE', 'roles', id, body);
@@ -40,17 +40,20 @@ export class RoleController {
       const body = (req as any).body;
       const user = (req as any).user;
 
-      const [old]: any = await pool.execute('SELECT * FROM roles WHERE id = ?', [id]);
+      const [oldRows]: any = await pool.execute('SELECT * FROM roles WHERE id = ?', [id]);
+      const oldData = oldRows[0];
       
       await pool.execute('UPDATE roles SET name = ?, description = ? WHERE id = ? AND company_id = ?', [
         body.name, body.description, id, user.company_id
       ]);
 
       const changes: any = {};
-      if (old[0] && old[0].name !== body.name) changes.name = { from: old[0].name, to: body.name };
-      if (old[0] && old[0].description !== body.description) changes.description = { from: old[0].description, to: body.description };
+      if (oldData) {
+        if (oldData.name !== body.name) changes.name = { from: oldData.name, to: body.name };
+        if (oldData.description !== body.description) changes.description = { from: oldData.description, to: body.description };
+      }
 
-      await logAudit(req, 'UPDATE', 'roles', id, { changes, payload: body });
+      await logAudit(req, 'UPDATE', 'roles', id, { changes, full_payload: body });
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
@@ -60,9 +63,14 @@ export class RoleController {
       const { id } = (req as any).params;
       const user = (req as any).user;
 
-      const [old]: any = await pool.execute('SELECT * FROM roles WHERE id = ?', [id]);
+      const [old]: any = await pool.execute('SELECT * FROM roles WHERE id = ? AND company_id = ?', [id, user.company_id]);
+      if (old.length === 0) throw new Error('Rol no encontrado');
+
+      // Validar si hay usuarios vinculados antes de eliminar
       const [users]: any = await pool.execute('SELECT COUNT(*) as count FROM user_roles WHERE role_id = ?', [id]);
-      if (users[0].count > 0) throw new Error('Rol con usuarios asignados.');
+      if (users[0].count > 0) {
+        throw new Error(`Integridad de Datos: El rol '${old[0].name}' tiene ${users[0].count} usuarios asignados. Revise y reasigne los perfiles antes de eliminar para evitar inconsistencias en la seguridad.`);
+      }
 
       await pool.execute('DELETE FROM roles WHERE id = ? AND company_id = ?', [id, user.company_id]);
       await logAudit(req, 'DELETE', 'roles', id, { deleted_role: old[0] });
@@ -75,7 +83,7 @@ export class RoleController {
       const { id } = (req as any).params;
       const [rows]: any = await pool.execute(`
         SELECT p.*, EXISTS(SELECT 1 FROM role_permissions rp WHERE rp.role_id = ? AND rp.permission_id = p.id) as assigned
-        FROM permissions p ORDER BY p.module, p.description
+        FROM permissions p ORDER BY p.module, p.name
       `, [id]);
       (res as any).json(rows);
     } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
@@ -85,11 +93,13 @@ export class RoleController {
     try {
       const { id } = (req as any).params;
       const { permission_ids } = (req as any).body;
+      
       await pool.execute('DELETE FROM role_permissions WHERE role_id = ?', [id]);
       for (const pId of permission_ids) {
         await pool.execute('INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)', [id, pId]);
       }
-      await logAudit(req, 'UPDATE_ROLE_PERMISSIONS', 'roles', id, { permission_ids });
+      
+      await logAudit(req, 'UPDATE_ROLE_PERMISSIONS', 'roles', id, { permission_count: permission_ids.length });
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
