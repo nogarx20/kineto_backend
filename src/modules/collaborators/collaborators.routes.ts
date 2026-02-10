@@ -16,7 +16,13 @@ router.post('/', rbacMiddleware('collaborators.create'), controller.create);
 router.patch('/:id', rbacMiddleware('collaborators.create'), controller.update); 
 router.delete('/:id', rbacMiddleware('collaborators.create'), controller.delete);
 
-// Auxiliares - Protegidos por el mismo permiso de gestión de colaboradores
+// Contracts (Nomina)
+router.get('/contracts', rbacMiddleware('collaborators.read'), controller.listContracts);
+router.post('/contracts', rbacMiddleware('collaborators.create'), controller.createContract);
+router.patch('/contracts/:id', rbacMiddleware('collaborators.create'), controller.updateContract);
+router.delete('/contracts/:id', rbacMiddleware('collaborators.create'), controller.deleteContract);
+
+// Auxiliares
 router.get('/positions', rbacMiddleware('collaborators.read'), controller.listPositions);
 router.post('/positions', rbacMiddleware('collaborators.create'), controller.createPosition);
 router.patch('/positions/:id', rbacMiddleware('collaborators.create'), controller.updatePosition);
