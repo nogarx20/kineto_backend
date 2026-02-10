@@ -24,5 +24,7 @@ router.delete('/positions/:id', rbacMiddleware('collaborators.create'), controll
 
 router.get('/cost-centers', rbacMiddleware('collaborators.read'), controller.listCostCenters);
 router.post('/cost-centers', rbacMiddleware('collaborators.create'), controller.createCostCenter);
+router.patch('/cost-centers/:id', rbacMiddleware('collaborators.create'), controller.updateCostCenter);
+router.delete('/cost-centers/:id', rbacMiddleware('collaborators.create'), controller.deleteCostCenter);
 
 export default router;
