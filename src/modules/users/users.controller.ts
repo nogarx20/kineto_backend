@@ -1,95 +1,80 @@
 
 import { Request, Response } from 'express';
-import { UserService } from './users.service';
-import { AuthenticatedRequest } from '../../middlewares/auth.middleware';
+import { RoleService } from './roles.service';
 import { logAudit } from '../../middlewares/audit.middleware';
+import pool from '../../config/database';
 
-const userService = new UserService();
+const roleService = new RoleService();
 
-export class UserController {
-  async login(req: Request, res: Response) {
-    const { companyId, email, password } = (req as any).body;
-
-    try {
-      const result = await userService.authenticate(email, password, companyId);
-      
-      if ((result as any).token) {
-        const userFound = (result as any).user;
-        const compId = (result as any).company_id || (result as any).options?.[0]?.company_id || companyId;
-        
-        const fakeReq = { 
-          user: { id: userFound.id, company_id: compId }, 
-          ip: (req as any).ip 
-        } as any;
-        
-        await logAudit(fakeReq, 'LOGIN_SUCCESS', 'users', userFound.id, { email });
-      }
-
-      (res as any).json(result);
-    } catch (err: any) {
-      const fakeReq = { user: { id: null, company_id: null }, ip: (req as any).ip } as any;
-      await logAudit(fakeReq, 'LOGIN_FAILED', 'users', email, { error: err.message });
-      (res as any).status(401).json({ error: err.message });
-    }
-  }
-
-  async logout(req: Request, res: Response) {
+export class RoleController {
+  async list(req: Request, res: Response) {
     try {
       const user = (req as any).user;
-      await logAudit(req, 'LOGOUT_SUCCESS', 'users', user?.id);
-      (res as any).json({ success: true });
+      const [roles]: any = await pool.execute(`
+        SELECT r.*, (SELECT COUNT(*) FROM role_permissions rp WHERE rp.role_id = r.id) as perm_count
+        FROM roles r WHERE r.company_id = ?
+      `, [user.company_id]);
+      (res as any).json(roles);
     } catch (err: any) {
       (res as any).status(500).json({ error: err.message });
     }
   }
 
-  async forgotPassword(req: Request, res: Response) {
+  async getRolePermissions(req: Request, res: Response) {
     try {
-        const { email } = (req as any).body;
-        const result = await userService.forgotPassword(email);
-        
-        // Log de auditoría para la solicitud de recuperación
-        const fakeReq = { user: { id: null, company_id: null }, ip: (req as any).ip } as any;
-        await logAudit(fakeReq, 'PASSWORD_RECOVERY_REQUEST', 'users', email, { email });
-        
-        (res as any).json(result);
+      const { id } = (req as any).params;
+      const [rows]: any = await pool.execute(`
+        SELECT p.*, EXISTS(SELECT 1 FROM role_permissions rp WHERE rp.role_id = ? AND rp.permission_id = p.id) as assigned
+        FROM permissions p
+      `, [id]);
+      (res as any).json(rows);
     } catch (err: any) {
-        (res as any).status(200).json({ success: true, message: 'Si el correo existe, recibirá instrucciones.' });
+      (res as any).status(500).json({ error: err.message });
     }
   }
 
-  async unlock(req: Request, res: Response) {
+  async updateRolePermissions(req: Request, res: Response) {
     try {
-        const user = (req as any).user;
-        const { id } = (req as any).params;
-        const result = await userService.unlockUser(user.company_id, id);
-        await logAudit(req, 'UNLOCK_USER', 'users', id);
-        (res as any).json(result);
-    } catch (err: any) {
-        (res as any).status(400).json({ error: err.message });
-    }
-  }
+      const { id } = (req as any).params;
+      const { permission_ids } = (req as any).body;
+      
+      await pool.execute('DELETE FROM role_permissions WHERE role_id = ?', [id]);
+      for (const pId of permission_ids) {
+        await pool.execute('INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)', [id, pId]);
+      }
 
-  async create(req: Request, res: Response) {
-    try {
-      const user = (req as any).user;
-      const body = (req as any).body;
-      const data = { ...body, company_id: user?.company_id };
-      const id = await userService.createUser(data);
-      await logAudit(req, 'CREATE', 'users', id, { email: data.email });
-      (res as any).status(201).json({ id });
+      await logAudit(req, 'UPDATE_ROLE_PERMISSIONS', 'roles', id);
+      (res as any).json({ success: true });
     } catch (err: any) {
       (res as any).status(400).json({ error: err.message });
     }
   }
 
-  async list(req: Request, res: Response) {
+  async create(req: Request, res: Response) {
     try {
+      const { name, description } = (req as any).body;
       const user = (req as any).user;
-      const users = await userService.getUsers(user!.company_id);
-      (res as any).json(users);
+      const id = require('crypto').randomUUID();
+      
+      await pool.execute('INSERT INTO roles (id, company_id, name, description) VALUES (?, ?, ?, ?)', [
+        id, user.company_id, name, description
+      ]);
+
+      await logAudit(req, 'CREATE', 'roles', id, { name });
+      (res as any).status(201).json({ id, name });
     } catch (err: any) {
-      (res as any).status(500).json({ error: err.message });
+      (res as any).status(400).json({ error: err.message });
+    }
+  }
+
+  async assign(req: Request, res: Response) {
+    try {
+      const { userId, roleId } = (req as any).body;
+      await pool.execute('INSERT IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)', [userId, roleId]);
+      await logAudit(req, 'ASSIGN_ROLE', 'users', userId, { roleId });
+      (res as any).json({ success: true });
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
     }
   }
 }
