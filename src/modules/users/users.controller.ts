@@ -97,10 +97,12 @@ export class UserController {
       const [rows]: any = await pool.execute('SELECT * FROM users WHERE id = ?', [id]);
       if (rows.length === 0) throw new Error('Usuario no encontrado');
 
+      // Verificación estricta de logs para integridad técnica
       const [logCheck]: any = await pool.execute('SELECT COUNT(*) as log_count FROM system_logs WHERE user_id = ?', [id]);
       if (logCheck[0].log_count > 0) {
         return (res as any).status(400).json({ 
-          error: 'Restricción de Integridad: Este usuario posee registros históricos en la bitácora de auditoría y no puede ser eliminado por razones de trazabilidad corporativa. Se recomienda bloquear el acceso en su lugar.' 
+          error: 'Restricción de Integridad Forense',
+          message: 'Este usuario posee registros históricos en la bitácora de auditoría y no puede ser eliminado para garantizar la trazabilidad inalterable de las acciones del sistema. Le recomendamos bloquear la cuenta para suspender el acceso sin perder los datos de cumplimiento.' 
         });
       }
 
@@ -149,19 +151,14 @@ export class UserController {
   async getPermissions(req: Request, res: Response) {
     try {
       const { id } = (req as any).params;
-      // Nueva consulta que unifica permisos directos y heredados por roles
+      // CONSULTA MODIFICADA: Ahora solo verifica asignaciones directas en user_permissions
+      // Los permisos de perfiles (roles) se gestionan en su propio módulo
       const [rows]: any = await pool.execute(`
         SELECT p.*, 
-        (
-          EXISTS(SELECT 1 FROM user_permissions up WHERE up.user_id = ? AND up.permission_id = p.id)
-          OR
-          EXISTS(SELECT 1 FROM role_permissions rp 
-                 JOIN user_roles ur ON rp.role_id = ur.role_id 
-                 WHERE ur.user_id = ? AND rp.permission_id = p.id)
-        ) as assigned
+        EXISTS(SELECT 1 FROM user_permissions up WHERE up.user_id = ? AND up.permission_id = p.id) as assigned
         FROM permissions p 
         ORDER BY p.module, p.name
-      `, [id, id]);
+      `, [id]);
       
       (res as any).json(rows);
     } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
@@ -175,7 +172,7 @@ export class UserController {
       for (const pId of permission_ids) {
         await pool.execute('INSERT INTO user_permissions (user_id, permission_id) VALUES (?, ?)', [id, pId]);
       }
-      await logAudit(req, 'UPDATE_PERMISSIONS', 'users', id, { permission_ids });
+      await logAudit(req, 'UPDATE_USER_DIRECT_PERMISSIONS', 'users', id, { permission_ids });
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
