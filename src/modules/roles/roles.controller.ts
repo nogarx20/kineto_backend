@@ -68,7 +68,6 @@ export class RoleController {
       const [old]: any = await pool.execute('SELECT * FROM roles WHERE id = ? AND company_id = ?', [id, user.company_id]);
       if (old.length === 0) throw new Error('Rol no encontrado');
 
-      // VALIDACIÓN CRÍTICA: Impedir eliminación si hay usuarios vinculados
       const [users]: any = await pool.execute('SELECT COUNT(*) as count FROM user_roles WHERE role_id = ?', [id]);
       if (users[0].count > 0) {
         return (res as any).status(400).json({ 
@@ -105,6 +104,36 @@ export class RoleController {
       }
       
       await logAudit(req, 'UPDATE_ROLE_PERMISSIONS', 'roles', id, { permission_count: permission_ids.length });
+      (res as any).json({ success: true });
+    } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
+  }
+
+  async getRoleUsers(req: Request, res: Response) {
+    try {
+      const { id } = (req as any).params;
+      const user = (req as any).user;
+      const [rows]: any = await pool.execute(`
+        SELECT u.id, u.first_name, u.last_name, u.email,
+        EXISTS(SELECT 1 FROM user_roles ur WHERE ur.role_id = ? AND ur.user_id = u.id) as assigned
+        FROM users u 
+        WHERE u.company_id = ?
+        ORDER BY u.first_name, u.last_name
+      `, [id, user.company_id]);
+      (res as any).json(rows);
+    } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
+  }
+
+  async updateRoleUsers(req: Request, res: Response) {
+    try {
+      const { id } = (req as any).params;
+      const { user_ids } = (req as any).body;
+      
+      await pool.execute('DELETE FROM user_roles WHERE role_id = ?', [id]);
+      for (const uId of user_ids) {
+        await pool.execute('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)', [uId, id]);
+      }
+      
+      await logAudit(req, 'UPDATE_ROLE_USERS', 'roles', id, { user_count: user_ids.length });
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
