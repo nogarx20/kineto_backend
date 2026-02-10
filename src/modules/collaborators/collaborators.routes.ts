@@ -19,6 +19,8 @@ router.delete('/:id', rbacMiddleware('collaborators.create'), controller.delete)
 // Auxiliares - Protegidos por el mismo permiso de gestión de colaboradores
 router.get('/positions', rbacMiddleware('collaborators.read'), controller.listPositions);
 router.post('/positions', rbacMiddleware('collaborators.create'), controller.createPosition);
+router.patch('/positions/:id', rbacMiddleware('collaborators.create'), controller.updatePosition);
+router.delete('/positions/:id', rbacMiddleware('collaborators.create'), controller.deletePosition);
 
 router.get('/cost-centers', rbacMiddleware('collaborators.read'), controller.listCostCenters);
 router.post('/cost-centers', rbacMiddleware('collaborators.create'), controller.createCostCenter);
