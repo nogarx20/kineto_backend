@@ -49,14 +49,24 @@ export class UserController {
   async update(req: Request, res: Response) {
     try {
       const { id } = (req as any).params;
-      const { email, first_name, last_name, collaborator_id } = (req as any).body;
+      const { email, first_name, last_name, collaborator_id, is_locked } = (req as any).body;
       const user = (req as any).user;
 
-      await pool.execute('UPDATE users SET email = ?, first_name = ?, last_name = ?, collaborator_id = ? WHERE id = ? AND company_id = ?', [
-        email, first_name, last_name, collaborator_id || null, id, user.company_id
+      await pool.execute(`
+        UPDATE users 
+        SET email = ?, first_name = ?, last_name = ?, collaborator_id = ?, is_locked = ? 
+        WHERE id = ? AND company_id = ?
+      `, [
+        email, 
+        first_name, 
+        last_name, 
+        collaborator_id || null, 
+        is_locked ? 1 : 0, 
+        id, 
+        user.company_id
       ]);
 
-      await logAudit(req, 'UPDATE', 'users', id, { email });
+      await logAudit(req, 'UPDATE', 'users', id, { email, status: is_locked ? 'LOCKED' : 'ACTIVE' });
       (res as any).json({ success: true });
     } catch (err: any) {
       (res as any).status(400).json({ error: err.message });
@@ -68,20 +78,21 @@ export class UserController {
       const { id } = (req as any).params;
       const user = (req as any).user;
 
-      // No permitir auto-eliminación
-      if (id === user.id) throw new Error('No puedes eliminar tu propio usuario.');
+      if (id === user.id) throw new Error('No puedes auto-eliminarte del sistema.');
 
-      // Validar si tiene bitácora de auditoría (Excluyendo la creación)
-      const [logs]: any = await pool.execute('SELECT COUNT(*) as count FROM system_logs WHERE user_id = ? AND action != "CREATE"', [id]);
+      // Validar si tiene bitácora de auditoría (Acciones reales más allá de la creación)
+      const [logs]: any = await pool.execute('SELECT COUNT(*) as count FROM system_logs WHERE user_id = ? AND action NOT IN ("CREATE", "LOGIN_SUCCESS")', [id]);
+      
       if (logs[0].count > 0) {
-        throw new Error('El usuario tiene actividad registrada y no puede ser eliminado por razones de auditoría.');
+        throw new Error('RESTRICCION_AUDITORIA: El usuario posee historial transaccional.');
       }
 
       await pool.execute('DELETE FROM users WHERE id = ? AND company_id = ?', [id, user.company_id]);
       await logAudit(req, 'DELETE', 'users', id);
       (res as any).json({ success: true });
     } catch (err: any) {
-      (res as any).status(400).json({ error: err.message });
+      // Devolvemos 403 para indicar que es una restricción de reglas de negocio/seguridad
+      (res as any).status(403).json({ error: err.message });
     }
   }
 
