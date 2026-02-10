@@ -16,14 +16,16 @@ router.get('/', authMiddleware, tenantMiddleware, rbacMiddleware('users.read'), 
 router.post('/', authMiddleware, tenantMiddleware, rbacMiddleware('users.create'), controller.create);
 router.patch('/:id', authMiddleware, tenantMiddleware, rbacMiddleware('users.update'), controller.update);
 
-// Fix: Permiso específico para eliminación de cuentas
 router.delete('/:id', authMiddleware, tenantMiddleware, rbacMiddleware('users.update'), controller.delete);
 
-// Gestión de permisos y logs
+// Ruta para el inicio de sesión (Permisos combinados)
+router.get('/:id/effective-permissions', authMiddleware, tenantMiddleware, controller.getEffectivePermissions);
+
+// Rutas para gestión administrativa (Solo permisos directos)
 router.get('/:id/permissions', authMiddleware, tenantMiddleware, rbacMiddleware('users.update'), controller.getPermissions);
 router.patch('/:id/permissions', authMiddleware, tenantMiddleware, rbacMiddleware('users.update'), controller.updatePermissions);
-router.get('/:id/logs', authMiddleware, tenantMiddleware, rbacMiddleware('users.update'), controller.getLogs);
 
+router.get('/:id/logs', authMiddleware, tenantMiddleware, rbacMiddleware('users.update'), controller.getLogs);
 router.post('/:id/unlock', authMiddleware, tenantMiddleware, rbacMiddleware('users.update'), controller.unlock);
 
 export default router;
