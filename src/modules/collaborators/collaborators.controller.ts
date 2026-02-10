@@ -137,7 +137,7 @@ export class CollaboratorController {
       if (usage[0].count > 0) {
         return (res as any).status(400).json({ 
           error: 'Restricción de Integridad',
-          message: `Acción denegada: El cargo '${old[0].name}' tiene ${usage[0].count} colaboradores asignados actualmente.\n\nPara poder eliminar este cargo, primero debe reasignar a dichos colaboradores a un cargo diferente. Esta medida asegura que los expedientes de personal no queden con información inconsistente.`
+          message: `Acción denegada: El cargo '${old[0].name}' tiene ${usage[0].count} colaboradores asignados actualmente.\n\nPara poder eliminar este cargo, primero debe reasignar a dichos colaboradores a un cargo diferente.`
         });
       }
 
@@ -168,5 +168,43 @@ export class CollaboratorController {
     } catch (err: any) {
       (res as any).status(400).json({ error: err.message });
     }
+  }
+
+  async updateCostCenter(req: Request, res: Response) {
+    try {
+      const { id } = (req as any).params;
+      const { code, name } = (req as any).body;
+      const user = (req as any).user;
+      
+      const [old]: any = await pool.execute('SELECT * FROM cost_centers WHERE id = ? AND company_id = ?', [id, user.company_id]);
+      if (old.length === 0) throw new Error('Centro de costo no encontrado');
+
+      await pool.execute('UPDATE cost_centers SET code = ?, name = ? WHERE id = ? AND company_id = ?', [code, name, id, user.company_id]);
+
+      await logAudit(req, 'UPDATE_COST_CENTER', 'cost_centers', id, { code: { from: old[0].code, to: code }, name: { from: old[0].name, to: name } });
+      (res as any).json({ success: true });
+    } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
+  }
+
+  async deleteCostCenter(req: Request, res: Response) {
+    try {
+      const { id } = (req as any).params;
+      const user = (req as any).user;
+
+      const [old]: any = await pool.execute('SELECT * FROM cost_centers WHERE id = ? AND company_id = ?', [id, user.company_id]);
+      if (old.length === 0) throw new Error('Centro de costo no encontrado');
+
+      const [usage]: any = await pool.execute('SELECT COUNT(*) as count FROM collaborators WHERE cost_center_id = ?', [id]);
+      if (usage[0].count > 0) {
+        return (res as any).status(400).json({ 
+          error: 'Restricción de Integridad',
+          message: `Acción denegada: El centro de costo '${old[0].name}' tiene ${usage[0].count} colaboradores vinculados.\n\nPara eliminarlo, reasigne el personal a otro centro de costo para mantener la integridad histórica.`
+        });
+      }
+
+      await pool.execute('DELETE FROM cost_centers WHERE id = ? AND company_id = ?', [id, user.company_id]);
+      await logAudit(req, 'DELETE_COST_CENTER', 'cost_centers', id, { deleted_record: old[0] });
+      (res as any).json({ success: true });
+    } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
 }
