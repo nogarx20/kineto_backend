@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import { CollaboratorService } from './collaborators.service';
 import { logAudit } from '../../middlewares/audit.middleware';
 import pool from '../../config/database';
+import { generateUUID } from '../../utils/uuid';
 
 const service = new CollaboratorService();
 
@@ -40,28 +41,9 @@ export class CollaboratorController {
       const [oldRows]: any = await pool.execute('SELECT * FROM collaborators WHERE id = ?', [id]);
       const oldData = oldRows[0];
 
-      await pool.execute(`
-        UPDATE collaborators 
-        SET identification = ?, first_name = ?, last_name = ?, email = ?, phone = ?, 
-            position_id = ?, cost_center_id = ?, is_active = ?
-        WHERE id = ? AND company_id = ?
-      `, [
-        body.identification, body.first_name, body.last_name, 
-        body.email, body.phone, body.position_id || null, 
-        body.cost_center_id || null, body.is_active ? 1 : 0, 
-        id, user.company_id
-      ]);
+      await (service as any).repository.update(id, user.company_id, body);
 
-      const changes: any = {};
-      const fields = ['identification', 'first_name', 'last_name', 'email', 'is_active', 'position_id'];
-      fields.forEach(field => {
-        const newVal = field === 'is_active' ? (body[field] ? 1 : 0) : body[field];
-        if (oldData && oldData[field] !== newVal) {
-          changes[field] = { from: oldData[field], to: newVal };
-        }
-      });
-
-      await logAudit(req, 'UPDATE', 'collaborators', id, { changes, full_payload: body });
+      await logAudit(req, 'UPDATE', 'collaborators', id, { full_payload: body });
       (res as any).json({ success: true });
     } catch (err: any) {
       (res as any).status(400).json({ error: err.message });
@@ -76,8 +58,16 @@ export class CollaboratorController {
       const [rows]: any = await pool.execute('SELECT * FROM collaborators WHERE id = ?', [id]);
       if (rows.length === 0) throw new Error('Colaborador no encontrado');
 
+      // Check references in contracts before deleting
+      const [contracts]: any = await pool.execute('SELECT COUNT(*) as count FROM contracts WHERE collaborator_id = ?', [id]);
+      if (contracts[0].count > 0) {
+        return (res as any).status(400).json({ 
+          error: 'Restricción de Integridad',
+          message: `Acción denegada: El colaborador tiene ${contracts[0].count} contratos vigentes o históricos. Debe eliminar los contratos antes de proceder.`
+        });
+      }
+
       await pool.execute('DELETE FROM collaborators WHERE id = ? AND company_id = ?', [id, user.company_id]);
-      
       await logAudit(req, 'DELETE', 'collaborators', id, { deleted_record: rows[0] });
       (res as any).json({ success: true });
     } catch (err: any) {
@@ -85,7 +75,60 @@ export class CollaboratorController {
     }
   }
 
-  // --- Cargos ---
+  // --- Contratos (Nómina) ---
+  async listContracts(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const data = await (service as any).repository.listContracts(user.company_id);
+      (res as any).json(data);
+    } catch (err: any) {
+      (res as any).status(500).json({ error: err.message });
+    }
+  }
+
+  async createContract(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const body = (req as any).body;
+      const id = generateUUID();
+      await (service as any).repository.createContract({ ...body, id, company_id: user.company_id });
+      await logAudit(req, 'CREATE', 'contracts', id, body);
+      (res as any).status(201).json({ id });
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
+  }
+
+  async updateContract(req: Request, res: Response) {
+    try {
+      const { id } = (req as any).params;
+      const body = (req as any).body;
+      const user = (req as any).user;
+      await (service as any).repository.updateContract(id, user.company_id, body);
+      await logAudit(req, 'UPDATE', 'contracts', id, body);
+      (res as any).json({ success: true });
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
+  }
+
+  async deleteContract(req: Request, res: Response) {
+    try {
+      const { id } = (req as any).params;
+      const user = (req as any).user;
+
+      const [rows]: any = await pool.execute('SELECT * FROM contracts WHERE id = ?', [id]);
+      if (rows.length === 0) throw new Error('Contrato no encontrado');
+
+      await (service as any).repository.deleteContract(id, user.company_id);
+      await logAudit(req, 'DELETE', 'contracts', id, { deleted_record: rows[0] });
+      (res as any).json({ success: true });
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
+  }
+
+  // --- Auxiliaries ---
   async listPositions(req: Request, res: Response) {
     try {
       const user = (req as any).user;
@@ -113,13 +156,8 @@ export class CollaboratorController {
       const { id } = (req as any).params;
       const { name } = (req as any).body;
       const user = (req as any).user;
-      
-      const [old]: any = await pool.execute('SELECT * FROM positions WHERE id = ? AND company_id = ?', [id, user.company_id]);
-      if (old.length === 0) throw new Error('Cargo no encontrado');
-
       await pool.execute('UPDATE positions SET name = ? WHERE id = ? AND company_id = ?', [name, id, user.company_id]);
-
-      await logAudit(req, 'UPDATE_POSITION', 'positions', id, { name: { from: old[0].name, to: name } });
+      await logAudit(req, 'UPDATE_POSITION', 'positions', id, { name });
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
@@ -128,26 +166,20 @@ export class CollaboratorController {
     try {
       const { id } = (req as any).params;
       const user = (req as any).user;
-
       const [old]: any = await pool.execute('SELECT * FROM positions WHERE id = ? AND company_id = ?', [id, user.company_id]);
-      if (old.length === 0) throw new Error('Cargo no encontrado');
-
-      // Validación de Integridad Referencial
-      const [usage]: any = await pool.execute('SELECT COUNT(*) as count FROM collaborators WHERE position_id = ?', [id]);
+      const [usage]: any = await pool.execute('SELECT COUNT(*) as count FROM contracts WHERE position_name = ?', [old[0]?.name]);
       if (usage[0].count > 0) {
         return (res as any).status(400).json({ 
           error: 'Restricción de Integridad',
-          message: `Acción denegada: El cargo '${old[0].name}' tiene ${usage[0].count} colaboradores asignados actualmente.\n\nPara poder eliminar este cargo, primero debe reasignar a dichos colaboradores a un cargo diferente.`
+          message: `Acción denegada: El cargo '${old[0].name}' está siendo referenciado en contratos activos.`
         });
       }
-
       await pool.execute('DELETE FROM positions WHERE id = ? AND company_id = ?', [id, user.company_id]);
       await logAudit(req, 'DELETE_POSITION', 'positions', id, { deleted_record: old[0] });
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
 
-  // --- Centros de Costo ---
   async listCostCenters(req: Request, res: Response) {
     try {
       const user = (req as any).user;
@@ -175,13 +207,8 @@ export class CollaboratorController {
       const { id } = (req as any).params;
       const { code, name } = (req as any).body;
       const user = (req as any).user;
-      
-      const [old]: any = await pool.execute('SELECT * FROM cost_centers WHERE id = ? AND company_id = ?', [id, user.company_id]);
-      if (old.length === 0) throw new Error('Centro de costo no encontrado');
-
       await pool.execute('UPDATE cost_centers SET code = ?, name = ? WHERE id = ? AND company_id = ?', [code, name, id, user.company_id]);
-
-      await logAudit(req, 'UPDATE_COST_CENTER', 'cost_centers', id, { code: { from: old[0].code, to: code }, name: { from: old[0].name, to: name } });
+      await logAudit(req, 'UPDATE_COST_CENTER', 'cost_centers', id, { code, name });
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
@@ -190,20 +217,14 @@ export class CollaboratorController {
     try {
       const { id } = (req as any).params;
       const user = (req as any).user;
-
-      const [old]: any = await pool.execute('SELECT * FROM cost_centers WHERE id = ? AND company_id = ?', [id, user.company_id]);
-      if (old.length === 0) throw new Error('Centro de costo no encontrado');
-
-      const [usage]: any = await pool.execute('SELECT COUNT(*) as count FROM collaborators WHERE cost_center_id = ?', [id]);
+      const [usage]: any = await pool.execute('SELECT COUNT(*) as count FROM contracts WHERE cost_center_id = ?', [id]);
       if (usage[0].count > 0) {
         return (res as any).status(400).json({ 
           error: 'Restricción de Integridad',
-          message: `Acción denegada: El centro de costo '${old[0].name}' tiene ${usage[0].count} colaboradores vinculados.\n\nPara eliminarlo, reasigne el personal a otro centro de costo para mantener la integridad histórica.`
+          message: `Acción denegada: El centro de costo tiene colaboradores vinculados mediante contratos.`
         });
       }
-
       await pool.execute('DELETE FROM cost_centers WHERE id = ? AND company_id = ?', [id, user.company_id]);
-      await logAudit(req, 'DELETE_COST_CENTER', 'cost_centers', id, { deleted_record: old[0] });
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
