@@ -38,9 +38,6 @@ export class CollaboratorController {
       const body = (req as any).body;
       const user = (req as any).user;
 
-      const [oldRows]: any = await pool.execute('SELECT * FROM collaborators WHERE id = ?', [id]);
-      const oldData = oldRows[0];
-
       await (service as any).repository.update(id, user.company_id, body);
 
       await logAudit(req, 'UPDATE', 'collaborators', id, { full_payload: body });
@@ -58,12 +55,27 @@ export class CollaboratorController {
       const [rows]: any = await pool.execute('SELECT * FROM collaborators WHERE id = ?', [id]);
       if (rows.length === 0) throw new Error('Colaborador no encontrado');
 
-      // Check references in contracts before deleting
-      const [contracts]: any = await pool.execute('SELECT COUNT(*) as count FROM contracts WHERE collaborator_id = ?', [id]);
-      if (contracts[0].count > 0) {
+      // Check references in contracts, schedules, attendance before deleting
+      const checks = [
+        { table: 'contracts', label: 'Contratos Laborales', query: 'SELECT COUNT(*) as count FROM contracts WHERE collaborator_id = ?' },
+        { table: 'schedules', label: 'Programación de Turnos', query: 'SELECT COUNT(*) as count FROM schedules WHERE collaborator_id = ?' },
+        { table: 'attendance_records', label: 'Marcajes de Asistencia', query: 'SELECT COUNT(*) as count FROM attendance_records WHERE collaborator_id = ?' }
+      ];
+
+      const activeReferences = [];
+      for (const check of checks) {
+        const [result]: any = await pool.execute(check.query, [id]);
+        if (result[0].count > 0) {
+          activeReferences.push(`${check.label} (${result[0].count} registros)`);
+        }
+      }
+
+      if (activeReferences.length > 0) {
         return (res as any).status(400).json({ 
           error: 'Restricción de Integridad',
-          message: `Acción denegada: El colaborador tiene ${contracts[0].count} contratos vigentes o históricos. Debe eliminar los contratos antes de proceder.`
+          message: `Acción denegada: El colaborador tiene registros vinculados que impiden su eliminación directa:\n\n` + 
+                   activeReferences.map(ref => `• ${ref}`).join('\n') + 
+                   `\n\nDebe eliminar o reasignar estos registros antes de proceder.`
         });
       }
 
@@ -91,9 +103,21 @@ export class CollaboratorController {
       const user = (req as any).user;
       const body = (req as any).body;
       const id = generateUUID();
-      await (service as any).repository.createContract({ ...body, id, company_id: user.company_id });
-      await logAudit(req, 'CREATE', 'contracts', id, body);
-      (res as any).status(201).json({ id });
+
+      // Generar código automático: PREFIX-SERIAL
+      const [cc]: any = await pool.execute('SELECT code FROM cost_centers WHERE id = ?', [body.cost_center_id]);
+      const prefix = cc[0]?.code || 'CC';
+      const [count]: any = await pool.execute('SELECT COUNT(*) as count FROM contracts WHERE company_id = ? AND cost_center_id = ?', [user.company_id, body.cost_center_id]);
+      const serial = (count[0].count + 1).toString().padStart(3, '0');
+      const contract_code = `${prefix}-${serial}`;
+
+      // Lógica de estado automático
+      let status = body.status || 'Activo';
+      if (body.end_date) status = 'Inactivo';
+
+      await (service as any).repository.createContract({ ...body, id, company_id: user.company_id, contract_code, status });
+      await logAudit(req, 'CREATE', 'contracts', id, { ...body, contract_code });
+      (res as any).status(201).json({ id, contract_code });
     } catch (err: any) {
       (res as any).status(400).json({ error: err.message });
     }
@@ -104,6 +128,12 @@ export class CollaboratorController {
       const { id } = (req as any).params;
       const body = (req as any).body;
       const user = (req as any).user;
+
+      // Validación de estado manual
+      if (body.status === 'Inactivo' && !body.end_date) {
+        throw new Error('Debe especificar una fecha final para marcar el contrato como Inactivo.');
+      }
+
       await (service as any).repository.updateContract(id, user.company_id, body);
       await logAudit(req, 'UPDATE', 'contracts', id, body);
       (res as any).json({ success: true });
@@ -119,9 +149,35 @@ export class CollaboratorController {
 
       const [rows]: any = await pool.execute('SELECT * FROM contracts WHERE id = ?', [id]);
       if (rows.length === 0) throw new Error('Contrato no encontrado');
+      
+      const contract = rows[0];
+
+      // Verificación de integridad: ¿Este contrato está referenciado en marcajes o programación?
+      // Nota: En este esquema simplificado, buscamos por fechas que coincidan con el periodo del contrato para este colaborador
+      const [usage]: any = await pool.execute(`
+        SELECT 
+          (SELECT COUNT(*) FROM schedules WHERE collaborator_id = ? AND date BETWEEN ? AND ?) as sched_count,
+          (SELECT COUNT(*) FROM attendance_records WHERE collaborator_id = ? AND timestamp BETWEEN ? AND ?) as att_count
+      `, [
+        contract.collaborator_id, contract.start_date, contract.end_date || '2099-12-31',
+        contract.collaborator_id, contract.start_date, contract.end_date || '2099-12-31'
+      ]);
+
+      const activeRefs = [];
+      if (usage[0].sched_count > 0) activeRefs.push(`Programación de Turnos (${usage[0].sched_count} registros)`);
+      if (usage[0].att_count > 0) activeRefs.push(`Marcajes de Asistencia (${usage[0].att_count} registros)`);
+
+      if (activeRefs.length > 0) {
+        return (res as any).status(400).json({ 
+          error: 'Restricción de Integridad',
+          message: `No es posible eliminar el contrato porque el colaborador ya posee registros históricos vinculados a este periodo laboral:\n\n` + 
+                   activeRefs.map(ref => `• ${ref}`).join('\n') + 
+                   `\n\nConsidere marcar el contrato como "Cancelado" o "Inactivo" para preservar el historial.`
+        });
+      }
 
       await (service as any).repository.deleteContract(id, user.company_id);
-      await logAudit(req, 'DELETE', 'contracts', id, { deleted_record: rows[0] });
+      await logAudit(req, 'DELETE', 'contracts', id, { deleted_record: contract });
       (res as any).json({ success: true });
     } catch (err: any) {
       (res as any).status(400).json({ error: err.message });
