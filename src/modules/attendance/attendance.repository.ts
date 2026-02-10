@@ -17,7 +17,6 @@ export class AttendanceRepository {
     return id;
   }
 
-  // Buscar marcajes recientes (hoy)
   async findTodayRecords(companyId: string, collaboratorId: string) {
     const [rows]: any = await pool.execute(`
       SELECT * FROM attendance_records 
@@ -28,7 +27,6 @@ export class AttendanceRepository {
     return rows;
   }
 
-  // Buscar turno programado para hoy para un colaborador
   async findTodaySchedule(companyId: string, collaboratorId: string) {
     const [rows]: any = await pool.execute(`
       SELECT s.*, sh.start_time, sh.end_time, sh.entry_buffer_minutes, sh.marking_zone_id
@@ -43,6 +41,15 @@ export class AttendanceRepository {
     const [rows]: any = await pool.execute(`
       SELECT * FROM collaborators WHERE company_id = ? AND identification = ?
     `, [companyId, identification]);
+    return rows[0];
+  }
+
+  async findActiveContract(collaboratorId: string, companyId: string) {
+    const [rows]: any = await pool.execute(`
+      SELECT * FROM contracts 
+      WHERE collaborator_id = ? AND company_id = ? AND status = 'Activo'
+      LIMIT 1
+    `, [collaboratorId, companyId]);
     return rows[0];
   }
 }
