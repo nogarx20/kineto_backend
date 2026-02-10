@@ -8,19 +8,18 @@ const userService = new UserService();
 
 export class UserController {
   async login(req: Request, res: Response) {
-    const { companyId, email, password } = (req as any).body;
+    const { email, password } = (req as any).body;
     try {
-      const result = await userService.authenticate(email, password, companyId);
+      const result = await userService.authenticate(email, password);
       if ((result as any).token) {
         const userFound = (result as any).user;
-        const compId = (result as any).company_id || (result as any).user?.company_id || companyId;
-        const fakeReq = { user: { id: userFound.id, company_id: compId }, ip: (req as any).ip } as any;
-        await logAudit(fakeReq, 'LOGIN_SUCCESS', 'users', userFound.id, { email });
+        const fakeReq = { user: { id: userFound.id, company_id: (result as any).company_id || userFound.company_id }, ip: (req as any).ip } as any;
+        await logAudit(fakeReq, 'LOGIN_SUCCESS', 'users', userFound.id, { email, timestamp: new Date() });
       }
       (res as any).json(result);
     } catch (err: any) {
       const fakeReq = { user: { id: null, company_id: null }, ip: (req as any).ip } as any;
-      await logAudit(fakeReq, 'LOGIN_FAILED', 'users', email, { error: err.message });
+      await logAudit(fakeReq, 'LOGIN_FAILED', 'users', email, { error: err.message, attempt_email: email });
       (res as any).status(401).json({ error: err.message });
     }
   }
@@ -28,25 +27,21 @@ export class UserController {
   async create(req: Request, res: Response) {
     try {
       const user = (req as any).user;
-      const { email, password, first_name, last_name, collaborator_id, role_ids } = (req as any).body;
+      const body = (req as any).body;
       
       const id = await userService.createUser({
         company_id: user.company_id,
-        email,
-        password,
-        first_name,
-        last_name,
-        collaborator_id: collaborator_id || null
+        ...body
       });
 
-      // Asignar roles iniciales
-      if (role_ids && role_ids.length > 0) {
-        for (const rId of role_ids) {
+      if (body.role_ids && body.role_ids.length > 0) {
+        for (const rId of body.role_ids) {
           await pool.execute('INSERT IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)', [id, rId]);
         }
       }
 
-      await logAudit(req, 'CREATE', 'users', id, { email });
+      // Auditoría: Guardar objeto completo creado
+      await logAudit(req, 'CREATE', 'users', id, body);
       (res as any).status(201).json({ id });
     } catch (err: any) {
       (res as any).status(400).json({ error: err.message });
@@ -56,32 +51,41 @@ export class UserController {
   async update(req: Request, res: Response) {
     try {
       const { id } = (req as any).params;
-      const { email, first_name, last_name, collaborator_id, is_locked, role_ids } = (req as any).body;
+      const body = (req as any).body;
       const user = (req as any).user;
+
+      // 1. Obtener estado anterior para el DIFF
+      const [oldRows]: any = await pool.execute('SELECT * FROM users WHERE id = ?', [id]);
+      const oldData = oldRows[0];
 
       await pool.execute(`
         UPDATE users 
         SET email = ?, first_name = ?, last_name = ?, collaborator_id = ?, is_locked = ? 
         WHERE id = ? AND company_id = ?
       `, [
-        email, 
-        first_name, 
-        last_name, 
-        collaborator_id || null, 
-        is_locked ? 1 : 0, 
-        id, 
-        user.company_id
+        body.email, body.first_name, body.last_name, 
+        body.collaborator_id || null, body.is_locked ? 1 : 0, 
+        id, user.company_id
       ]);
 
-      // Sincronizar Roles
-      if (role_ids) {
+      if (body.role_ids) {
         await pool.execute('DELETE FROM user_roles WHERE user_id = ?', [id]);
-        for (const rId of role_ids) {
+        for (const rId of body.role_ids) {
           await pool.execute('INSERT IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)', [id, rId]);
         }
       }
 
-      await logAudit(req, 'UPDATE', 'users', id, { email, status: is_locked ? 'LOCKED' : 'ACTIVE' });
+      // 2. Calcular diferencias
+      const changes: any = {};
+      const fields = ['email', 'first_name', 'last_name', 'is_locked'];
+      fields.forEach(field => {
+        const newVal = field === 'is_locked' ? (body[field] ? 1 : 0) : body[field];
+        if (oldData && oldData[field] !== newVal) {
+          changes[field] = { from: oldData[field], to: newVal };
+        }
+      });
+
+      await logAudit(req, 'UPDATE', 'users', id, { changes, full_payload: body });
       (res as any).json({ success: true });
     } catch (err: any) {
       (res as any).status(400).json({ error: err.message });
@@ -93,17 +97,13 @@ export class UserController {
       const { id } = (req as any).params;
       const user = (req as any).user;
 
-      if (id === user.id) throw new Error('No puedes auto-eliminarte del sistema.');
-
-      // Validar si tiene bitácora de auditoría real
-      const [logs]: any = await pool.execute('SELECT COUNT(*) as count FROM system_logs WHERE user_id = ? AND action NOT IN ("CREATE", "LOGIN_SUCCESS")', [id]);
-      
-      if (logs[0].count > 0) {
-        throw new Error('RESTRICCION_AUDITORIA: El usuario posee historial transaccional inamovible.');
-      }
+      // Obtener datos antes de borrar para respaldo en logs
+      const [rows]: any = await pool.execute('SELECT * FROM users WHERE id = ?', [id]);
+      if (rows.length === 0) throw new Error('Usuario no encontrado');
 
       await pool.execute('DELETE FROM users WHERE id = ? AND company_id = ?', [id, user.company_id]);
-      await logAudit(req, 'DELETE', 'users', id);
+      
+      await logAudit(req, 'DELETE', 'users', id, { deleted_record: rows[0] });
       (res as any).json({ success: true });
     } catch (err: any) {
       (res as any).status(403).json({ error: err.message });
@@ -119,40 +119,16 @@ export class UserController {
         WHERE user_id = ? AND (company_id = ? OR company_id IS NULL)
         ORDER BY createdAt DESC LIMIT 100
       `, [id, user.company_id]);
-      (res as any).json(rows);
-    } catch (err: any) {
-      (res as any).status(500).json({ error: err.message });
-    }
-  }
-
-  async getPermissions(req: Request, res: Response) {
-    try {
-      const { id } = (req as any).params;
-      const [rows]: any = await pool.execute(`
-        SELECT p.id, p.name, p.code, p.module, p.description, 
-        EXISTS(SELECT 1 FROM user_permissions up WHERE up.user_id = ? AND up.permission_id = p.id) as is_direct
-        FROM permissions p ORDER BY p.module, p.name
-      `, [id]);
-      (res as any).json(rows);
-    } catch (err: any) {
-      (res as any).status(500).json({ error: err.message });
-    }
-  }
-
-  async updatePermissions(req: Request, res: Response) {
-    try {
-      const { id } = (req as any).params;
-      const { permission_ids } = (req as any).body;
       
-      await pool.execute('DELETE FROM user_permissions WHERE user_id = ?', [id]);
-      for (const pId of permission_ids) {
-        await pool.execute('INSERT INTO user_permissions (user_id, permission_id) VALUES (?, ?)', [id, pId]);
-      }
+      // Asegurar que detalles sea parseado si viene como string
+      const parsedRows = rows.map((r: any) => ({
+        ...r,
+        details: typeof r.details === 'string' ? JSON.parse(r.details) : r.details
+      }));
 
-      await logAudit(req, 'UPDATE_DIRECT_PERMISSIONS', 'users', id);
-      (res as any).json({ success: true });
+      (res as any).json(parsedRows);
     } catch (err: any) {
-      (res as any).status(400).json({ error: err.message });
+      (res as any).status(500).json({ error: err.message });
     }
   }
 
@@ -160,40 +136,47 @@ export class UserController {
     try {
       const user = (req as any).user;
       const [rows]: any = await pool.execute(`
-        SELECT u.*, c.identification as collab_id_card,
-        (SELECT GROUP_CONCAT(role_id) FROM user_roles WHERE user_id = u.id) as role_ids_str
-        FROM users u 
-        LEFT JOIN collaborators c ON u.collaborator_id = c.id 
-        WHERE u.company_id = ?
+        SELECT u.*, (SELECT GROUP_CONCAT(role_id) FROM user_roles WHERE user_id = u.id) as role_ids_str
+        FROM users u WHERE u.company_id = ?
       `, [user.company_id]);
-      
-      const usersWithRoles = rows.map((u: any) => ({
-        ...u,
-        role_ids: u.role_ids_str ? u.role_ids_str.split(',') : []
-      }));
-      
+      const usersWithRoles = rows.map((u: any) => ({ ...u, role_ids: u.role_ids_str ? u.role_ids_str.split(',') : [] }));
       (res as any).json(usersWithRoles);
-    } catch (err: any) {
-      (res as any).status(500).json({ error: err.message });
-    }
+    } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
+  }
+
+  async getPermissions(req: Request, res: Response) {
+    try {
+      const { id } = (req as any).params;
+      const [rows]: any = await pool.execute(`
+        SELECT p.*, EXISTS(SELECT 1 FROM user_permissions up WHERE up.user_id = ? AND up.permission_id = p.id) as is_direct
+        FROM permissions p ORDER BY p.module, p.name
+      `, [id]);
+      (res as any).json(rows);
+    } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
+  }
+
+  async updatePermissions(req: Request, res: Response) {
+    try {
+      const { id } = (req as any).params;
+      const { permission_ids } = (req as any).body;
+      await pool.execute('DELETE FROM user_permissions WHERE user_id = ?', [id]);
+      for (const pId of permission_ids) {
+        await pool.execute('INSERT INTO user_permissions (user_id, permission_id) VALUES (?, ?)', [id, pId]);
+      }
+      await logAudit(req, 'UPDATE_PERMISSIONS', 'users', id, { permission_ids });
+      (res as any).json({ success: true });
+    } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
 
   async unlock(req: Request, res: Response) {
     try {
       const { id } = (req as any).params;
       await pool.execute('UPDATE users SET is_locked = FALSE, failed_attempts = 0 WHERE id = ?', [id]);
-      await logAudit(req, 'UNLOCK_USER', 'users', id);
+      await logAudit(req, 'UNLOCK', 'users', id);
       (res as any).json({ success: true });
-    } catch (err: any) {
-      (res as any).status(400).json({ error: err.message });
-    }
+    } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
 
-  async logout(req: Request, res: Response) {
-    (res as any).json({ success: true });
-  }
-
-  async forgotPassword(req: Request, res: Response) {
-    (res as any).json({ message: 'Enviado' });
-  }
+  async logout(req: Request, res: Response) { (res as any).json({ success: true }); }
+  async forgotPassword(req: Request, res: Response) { (res as any).json({ message: 'Enviado' }); }
 }
