@@ -6,10 +6,8 @@ export class CollaboratorRepository {
   // --- Collaborators ---
   async findAll(companyId: string) {
     const [rows]: any = await pool.execute(`
-      SELECT c.*, p.name as position_name, cc.name as cost_center_name 
+      SELECT c.*
       FROM collaborators c
-      LEFT JOIN positions p ON c.position_id = p.id
-      LEFT JOIN cost_centers cc ON c.cost_center_id = cc.id
       WHERE c.company_id = ?
     `, [companyId]);
     return rows;
@@ -26,34 +24,78 @@ export class CollaboratorRepository {
   async create(data: any) {
     const { 
       id, company_id, identification, first_name, last_name, 
-      email, phone, position_id, cost_center_id 
+      email, phone, address, gender, birth_date, username, password 
     } = data;
     
     await pool.execute(`
       INSERT INTO collaborators 
-      (id, company_id, identification, first_name, last_name, email, phone, position_id, cost_center_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [id, company_id, identification, first_name, last_name, email, phone, position_id, cost_center_id]);
+      (id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password]);
     
     return id;
   }
 
   async update(id: string, companyId: string, data: any) {
-    const { identification, first_name, last_name, email, phone, position_id, cost_center_id, is_active } = data;
+    const { identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, is_active } = data;
     await pool.execute(`
       UPDATE collaborators 
       SET identification = ?, first_name = ?, last_name = ?, email = ?, phone = ?, 
-          position_id = ?, cost_center_id = ?, is_active = ?
+          address = ?, gender = ?, birth_date = ?, username = ?, password = ?, is_active = ?
       WHERE id = ? AND company_id = ?
-    `, [identification, first_name, last_name, email, phone, position_id, cost_center_id, is_active ? 1 : 0, id, companyId]);
+    `, [identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, is_active ? 1 : 0, id, companyId]);
   }
 
   async delete(id: string, companyId: string) {
     await pool.execute('DELETE FROM collaborators WHERE id = ? AND company_id = ?', [id, companyId]);
   }
 
-  // --- Auxiliaries (Positions & Cost Centers) ---
-  
+  // --- Contracts ---
+  async listContracts(companyId: string) {
+    const [rows]: any = await pool.execute(`
+      SELECT con.*, col.first_name, col.last_name, cc.name as cost_center_name, cc.code as cost_center_code
+      FROM contracts con
+      JOIN collaborators col ON con.collaborator_id = col.id
+      JOIN cost_centers cc ON con.cost_center_id = cc.id
+      WHERE con.company_id = ?
+    `, [companyId]);
+    return rows;
+  }
+
+  async createContract(data: any) {
+    const { 
+      id, company_id, collaborator_id, cost_center_id, start_date, end_date, 
+      position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime 
+    } = data;
+    
+    await pool.execute(`
+      INSERT INTO contracts 
+      (id, company_id, collaborator_id, cost_center_id, start_date, end_date, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [id, company_id, collaborator_id, cost_center_id, start_date, end_date || null, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime ? 1 : 0]);
+    
+    return id;
+  }
+
+  async updateContract(id: string, companyId: string, data: any) {
+    const { 
+      cost_center_id, start_date, end_date, position_name, contract_type, 
+      weekly_hours, working_days, rest_days, generates_overtime 
+    } = data;
+
+    await pool.execute(`
+      UPDATE contracts 
+      SET cost_center_id = ?, start_date = ?, end_date = ?, position_name = ?, 
+          contract_type = ?, weekly_hours = ?, working_days = ?, rest_days = ?, generates_overtime = ?
+      WHERE id = ? AND company_id = ?
+    `, [cost_center_id, start_date, end_date || null, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime ? 1 : 0, id, companyId]);
+  }
+
+  async deleteContract(id: string, companyId: string) {
+    await pool.execute('DELETE FROM contracts WHERE id = ? AND company_id = ?', [id, companyId]);
+  }
+
+  // --- Auxiliaries ---
   async createPosition(data: any) {
     await pool.execute(
       'INSERT INTO positions (id, company_id, name) VALUES (?, ?, ?)',
