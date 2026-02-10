@@ -3,6 +3,7 @@ import pool from '../../config/database';
 
 export class ReportsRepository {
   async getComplianceStats(companyId: string) {
+    // Solo tomamos en cuenta colaboradores que tengan al menos un contrato 'Activo'
     const [rows]: any = await pool.execute(`
       SELECT 
         c.id, 
@@ -11,6 +12,7 @@ export class ReportsRepository {
         COALESCE(COUNT(DISTINCT a.id), 0) as ejecutado,
         COALESCE(SUM(CASE WHEN a.status = 'Late' THEN 1 ELSE 0 END), 0) as late_count
       FROM collaborators c
+      INNER JOIN contracts con ON c.id = con.collaborator_id AND con.status = 'Activo'
       LEFT JOIN schedules s ON c.id = s.collaborator_id AND s.date BETWEEN DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND CURDATE()
       LEFT JOIN attendance_records a ON c.id = a.collaborator_id AND a.timestamp BETWEEN DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND NOW()
       WHERE c.company_id = ?
