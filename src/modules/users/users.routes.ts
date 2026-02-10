@@ -12,40 +12,16 @@ router.post('/login', controller.login);
 router.post('/logout', authMiddleware, controller.logout);
 router.post('/forgot-password', controller.forgotPassword);
 
-router.get('/', 
-  authMiddleware, 
-  tenantMiddleware, 
-  rbacMiddleware('users.read'), 
-  controller.list
-);
+router.get('/', authMiddleware, tenantMiddleware, rbacMiddleware('users.read'), controller.list);
+router.post('/', authMiddleware, tenantMiddleware, rbacMiddleware('users.create'), controller.create);
+router.patch('/:id', authMiddleware, tenantMiddleware, rbacMiddleware('users.update'), controller.update);
+router.delete('/:id', authMiddleware, tenantMiddleware, rbacMiddleware('users.update'), controller.delete);
 
-router.post('/', 
-  authMiddleware, 
-  tenantMiddleware, 
-  rbacMiddleware('users.create'), 
-  controller.create
-);
+// Gestión de permisos y logs
+router.get('/:id/permissions', authMiddleware, tenantMiddleware, rbacMiddleware('users.update'), controller.getPermissions);
+router.patch('/:id/permissions', authMiddleware, tenantMiddleware, rbacMiddleware('users.update'), controller.updatePermissions);
+router.get('/:id/logs', authMiddleware, tenantMiddleware, rbacMiddleware('users.update'), controller.getLogs);
 
-// Gestión de permisos directos
-router.get('/:id/permissions',
-  authMiddleware,
-  tenantMiddleware,
-  rbacMiddleware('users.update'),
-  controller.getPermissions
-);
-
-router.patch('/:id/permissions',
-  authMiddleware,
-  tenantMiddleware,
-  rbacMiddleware('users.update'),
-  controller.updatePermissions
-);
-
-router.post('/:id/unlock',
-  authMiddleware,
-  tenantMiddleware,
-  rbacMiddleware('users.update'),
-  controller.unlock
-);
+router.post('/:id/unlock', authMiddleware, tenantMiddleware, rbacMiddleware('users.update'), controller.unlock);
 
 export default router;
