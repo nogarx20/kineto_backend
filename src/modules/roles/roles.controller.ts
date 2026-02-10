@@ -11,12 +11,18 @@ export class RoleController {
   async list(req: Request, res: Response) {
     try {
       const user = (req as any).user;
+      const { search } = (req as any).query;
+
       const [roles]: any = await pool.execute(`
         SELECT r.*, 
         (SELECT COUNT(*) FROM role_permissions rp WHERE rp.role_id = r.id) as perm_count,
         (SELECT COUNT(*) FROM user_roles ur WHERE ur.role_id = r.id) as user_count
         FROM roles r WHERE r.company_id = ?
       `, [user.company_id]);
+
+      // Registrar evento de auditoría de consulta con filtro
+      await logAudit(req, 'LIST', 'roles', undefined, { filter: search || 'all' });
+
       (res as any).json(roles);
     } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
   }
