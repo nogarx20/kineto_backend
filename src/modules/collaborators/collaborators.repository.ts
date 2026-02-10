@@ -64,15 +64,15 @@ export class CollaboratorRepository {
 
   async createContract(data: any) {
     const { 
-      id, company_id, collaborator_id, cost_center_id, start_date, end_date, 
-      position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime 
+      id, company_id, collaborator_id, cost_center_id, contract_code, start_date, end_date, 
+      position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime, status 
     } = data;
     
     await pool.execute(`
       INSERT INTO contracts 
-      (id, company_id, collaborator_id, cost_center_id, start_date, end_date, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [id, company_id, collaborator_id, cost_center_id, start_date, end_date || null, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime ? 1 : 0]);
+      (id, company_id, collaborator_id, cost_center_id, contract_code, start_date, end_date, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [id, company_id, collaborator_id, cost_center_id, contract_code, start_date, end_date || null, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime ? 1 : 0, status || 'Activo']);
     
     return id;
   }
@@ -80,15 +80,15 @@ export class CollaboratorRepository {
   async updateContract(id: string, companyId: string, data: any) {
     const { 
       cost_center_id, start_date, end_date, position_name, contract_type, 
-      weekly_hours, working_days, rest_days, generates_overtime 
+      weekly_hours, working_days, rest_days, generates_overtime, status 
     } = data;
 
     await pool.execute(`
       UPDATE contracts 
       SET cost_center_id = ?, start_date = ?, end_date = ?, position_name = ?, 
-          contract_type = ?, weekly_hours = ?, working_days = ?, rest_days = ?, generates_overtime = ?
+          contract_type = ?, weekly_hours = ?, working_days = ?, rest_days = ?, generates_overtime = ?, status = ?
       WHERE id = ? AND company_id = ?
-    `, [cost_center_id, start_date, end_date || null, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime ? 1 : 0, id, companyId]);
+    `, [cost_center_id, start_date, end_date || null, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime ? 1 : 0, status, id, companyId]);
   }
 
   async deleteContract(id: string, companyId: string) {
