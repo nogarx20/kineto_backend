@@ -21,15 +21,15 @@ export class UserService {
     for (const user of users) {
       if (!user.is_active) continue;
 
-      // Verificar si está bloqueado
+      // RESTRICCIÓN: Verificar si el estado del usuario es bloqueado (is_locked)
       if (user.is_locked) {
-        throw new Error('Cuenta bloqueada por seguridad. Contacte al administrador.');
+        throw new Error('Su acceso ha sido restringido por la administración corporativa.');
       }
 
       const isValid = await comparePassword(pass, user.password);
       
       if (isValid) {
-        // Exito: Resetear intentos
+        // Exito: Resetear intentos si no está bloqueado
         await this.repository.resetAttempts(user.id);
         
         const token = generateToken({
@@ -47,10 +47,10 @@ export class UserService {
         // Fallo: Incrementar intentos
         await this.repository.incrementFailedAttempts(user.id);
         
-        // Verificar si debemos bloquear
+        // Verificar si debemos bloquear por intentos fallidos
         if (user.failed_attempts + 1 >= MAX_FAILED_ATTEMPTS) {
           await this.repository.lockAccount(user.id);
-          throw new Error('La cuenta ha sido bloqueada tras 5 intentos fallidos.');
+          throw new Error('La cuenta ha sido bloqueada tras 5 intentos fallidos por seguridad.');
         }
       }
     }
@@ -87,11 +87,6 @@ export class UserService {
   async forgotPassword(email: string) {
     const user = await this.repository.findGlobalByEmail(email);
     if (!user) throw new Error('Si el correo existe en nuestro sistema, recibirá instrucciones.');
-    
-    // SIMULACION: En un entorno real enviaríamos un email con sendgrid/aws ses.
-    console.log(`[SIMULACION EMAIL] Enviando password a ${email}. Password: (Hasheada en DB)`);
-    
-    // Por el momento, informamos que se envió un mensaje.
     return { success: true, message: 'Se ha enviado la información a su correo electrónico.' };
   }
 }
