@@ -19,4 +19,8 @@ router.delete('/:id', rbacMiddleware('roles.update'), controller.delete);
 router.get('/:id/permissions', rbacMiddleware('roles.update'), controller.getRolePermissions);
 router.patch('/:id/permissions', rbacMiddleware('roles.update'), controller.updateRolePermissions);
 
+// Gestión de usuarios por rol
+router.get('/:id/users', rbacMiddleware('roles.update'), controller.getRoleUsers);
+router.patch('/:id/users', rbacMiddleware('roles.update'), controller.updateRoleUsers);
+
 export default router;
