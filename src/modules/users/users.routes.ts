@@ -9,7 +9,7 @@ const router = Router();
 const controller = new UserController();
 
 router.post('/login', controller.login);
-router.post('/logout', authMiddleware, controller.logout); // Nueva ruta
+router.post('/logout', authMiddleware, controller.logout);
 router.post('/forgot-password', controller.forgotPassword);
 
 router.get('/', 
@@ -24,6 +24,21 @@ router.post('/',
   tenantMiddleware, 
   rbacMiddleware('users.create'), 
   controller.create
+);
+
+// Gestión de permisos directos
+router.get('/:id/permissions',
+  authMiddleware,
+  tenantMiddleware,
+  rbacMiddleware('users.update'),
+  controller.getPermissions
+);
+
+router.patch('/:id/permissions',
+  authMiddleware,
+  tenantMiddleware,
+  rbacMiddleware('users.update'),
+  controller.updatePermissions
 );
 
 router.post('/:id/unlock',
