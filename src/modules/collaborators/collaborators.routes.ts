@@ -13,15 +13,14 @@ router.use(authMiddleware, tenantMiddleware);
 // Collaborators
 router.get('/', rbacMiddleware('collaborators.read'), controller.list);
 router.post('/', rbacMiddleware('collaborators.create'), controller.create);
-router.patch('/:id', rbacMiddleware('collaborators.create'), controller.update); // Usamos create perm para simplificar
+router.patch('/:id', rbacMiddleware('collaborators.create'), controller.update); 
 router.delete('/:id', rbacMiddleware('collaborators.create'), controller.delete);
 
-// Auxiliares
-router.get('/positions', controller.listPositions);
-router.post('/positions', controller.createPosition);
+// Auxiliares - Protegidos por el mismo permiso de gestión de colaboradores
+router.get('/positions', rbacMiddleware('collaborators.read'), controller.listPositions);
+router.post('/positions', rbacMiddleware('collaborators.create'), controller.createPosition);
 
-router.get('/cost-centers', controller.listCostCenters);
-router.post('/cost-centers', controller.createCostCenter);
+router.get('/cost-centers', rbacMiddleware('collaborators.read'), controller.listCostCenters);
+router.post('/cost-centers', rbacMiddleware('collaborators.create'), controller.createCostCenter);
 
 export default router;
-
