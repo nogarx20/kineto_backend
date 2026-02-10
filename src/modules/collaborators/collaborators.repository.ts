@@ -38,6 +38,20 @@ export class CollaboratorRepository {
     return id;
   }
 
+  async update(id: string, companyId: string, data: any) {
+    const { identification, first_name, last_name, email, phone, position_id, cost_center_id, is_active } = data;
+    await pool.execute(`
+      UPDATE collaborators 
+      SET identification = ?, first_name = ?, last_name = ?, email = ?, phone = ?, 
+          position_id = ?, cost_center_id = ?, is_active = ?
+      WHERE id = ? AND company_id = ?
+    `, [identification, first_name, last_name, email, phone, position_id, cost_center_id, is_active ? 1 : 0, id, companyId]);
+  }
+
+  async delete(id: string, companyId: string) {
+    await pool.execute('DELETE FROM collaborators WHERE id = ? AND company_id = ?', [id, companyId]);
+  }
+
   // --- Auxiliaries (Positions & Cost Centers) ---
   
   async createPosition(data: any) {
