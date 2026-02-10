@@ -31,15 +31,28 @@ export class ShiftRepository {
 
   async createShift(data: any) {
     const { 
-      id, company_id, name, prefix, start_time, end_time, 
-      entry_buffer_minutes, exit_buffer_minutes, marking_zone_id 
+      id, company_id, name, prefix, shift_type,
+      start_time, end_time, start_time_2, end_time_2,
+      entry_start_buffer, entry_end_buffer, exit_start_buffer, exit_end_buffer,
+      entry_start_buffer_2, entry_end_buffer_2, exit_start_buffer_2, exit_end_buffer_2,
+      rounding, lunch_start, lunch_end, marking_zone_id 
     } = data;
     
     await pool.execute(`
       INSERT INTO shifts 
-      (id, company_id, name, prefix, start_time, end_time, entry_buffer_minutes, exit_buffer_minutes, marking_zone_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [id, company_id, name, prefix, start_time, end_time, entry_buffer_minutes, exit_buffer_minutes, marking_zone_id]);
+      (id, company_id, name, prefix, shift_type, 
+       start_time, end_time, start_time_2, end_time_2,
+       entry_start_buffer, entry_end_buffer, exit_start_buffer, exit_end_buffer,
+       entry_start_buffer_2, entry_end_buffer_2, exit_start_buffer_2, exit_end_buffer_2,
+       rounding, lunch_start, lunch_end, marking_zone_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      id, company_id, name, prefix, shift_type || 'Simple',
+      start_time, end_time, start_time_2 || null, end_time_2 || null,
+      entry_start_buffer || 15, entry_end_buffer || 15, exit_start_buffer || 15, exit_end_buffer || 15,
+      entry_start_buffer_2 || 15, entry_end_buffer_2 || 15, exit_start_buffer_2 || 15, exit_end_buffer_2 || 15,
+      rounding || 0, lunch_start || null, lunch_end || null, marking_zone_id || null
+    ]);
     
     return id;
   }
