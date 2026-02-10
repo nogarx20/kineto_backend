@@ -94,11 +94,9 @@ export class UserController {
       const { id } = (req as any).params;
       const user = (req as any).user;
 
-      // 1. Verificar si el usuario existe
       const [rows]: any = await pool.execute('SELECT * FROM users WHERE id = ?', [id]);
       if (rows.length === 0) throw new Error('Usuario no encontrado');
 
-      // 2. Verificar integridad referencial con bitácora de auditoría
       const [logCheck]: any = await pool.execute('SELECT COUNT(*) as log_count FROM system_logs WHERE user_id = ?', [id]);
       if (logCheck[0].log_count > 0) {
         return (res as any).status(400).json({ 
@@ -106,7 +104,6 @@ export class UserController {
         });
       }
 
-      // 3. Proceder con la eliminación
       await pool.execute('DELETE FROM users WHERE id = ? AND company_id = ?', [id, user.company_id]);
       
       await logAudit(req, 'DELETE', 'users', id, { deleted_record: rows[0] });
@@ -152,10 +149,20 @@ export class UserController {
   async getPermissions(req: Request, res: Response) {
     try {
       const { id } = (req as any).params;
+      // Nueva consulta que unifica permisos directos y heredados por roles
       const [rows]: any = await pool.execute(`
-        SELECT p.*, EXISTS(SELECT 1 FROM user_permissions up WHERE up.user_id = ? AND up.permission_id = p.id) as is_direct
-        FROM permissions p ORDER BY p.module, p.name
-      `, [id]);
+        SELECT p.*, 
+        (
+          EXISTS(SELECT 1 FROM user_permissions up WHERE up.user_id = ? AND up.permission_id = p.id)
+          OR
+          EXISTS(SELECT 1 FROM role_permissions rp 
+                 JOIN user_roles ur ON rp.role_id = ur.role_id 
+                 WHERE ur.user_id = ? AND rp.permission_id = p.id)
+        ) as assigned
+        FROM permissions p 
+        ORDER BY p.module, p.name
+      `, [id, id]);
+      
       (res as any).json(rows);
     } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
   }
