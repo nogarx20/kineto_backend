@@ -38,6 +38,17 @@ export class CollaboratorController {
       const body = (req as any).body;
       const user = (req as any).user;
 
+      // Validación de regla de negocio: No inactivar si existen contratos activos
+      if (body.is_active === false || body.is_active === 0) {
+        const [activeContracts]: any = await pool.execute(
+          'SELECT COUNT(*) as count FROM contracts WHERE collaborator_id = ? AND status = "Activo" AND company_id = ?',
+          [id, user.company_id]
+        );
+        if (activeContracts[0].count > 0) {
+          throw new Error(`Acción Denegada: El colaborador posee ${activeContracts[0].count} contrato(s) con estado "Activo". Debe finalizar o cancelar los contratos vigentes antes de proceder a inactivar el perfil del colaborador.`);
+        }
+      }
+
       await (service as any).repository.update(id, user.company_id, body);
 
       await logAudit(req, 'UPDATE', 'collaborators', id, { full_payload: body });
@@ -112,7 +123,7 @@ export class CollaboratorController {
       `, [user.company_id, body.cost_center_id]);
       
       const nextSerial = (maxRows[0].max_serial || 0) + 1;
-      const contract_code = `${prefix}-${nextSerial.toString().padStart(3, '0')}`;
+      const contract_code = `${prefix}-${nextSerial.toString().padStart(4, '0')}`;
 
       // Lógica de estado inicial
       let status = body.status || 'Activo';
