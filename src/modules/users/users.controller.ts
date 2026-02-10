@@ -13,7 +13,7 @@ export class UserController {
       const result = await userService.authenticate(email, password, companyId);
       if ((result as any).token) {
         const userFound = (result as any).user;
-        const compId = (result as any).company_id || companyId;
+        const compId = (result as any).company_id || (result as any).user?.company_id || companyId;
         const fakeReq = { user: { id: userFound.id, company_id: compId }, ip: (req as any).ip } as any;
         await logAudit(fakeReq, 'LOGIN_SUCCESS', 'users', userFound.id, { email });
       }
@@ -28,7 +28,7 @@ export class UserController {
   async create(req: Request, res: Response) {
     try {
       const user = (req as any).user;
-      const { email, password, first_name, last_name, collaborator_id, role_ids } = (req as any).body;
+      const { email, password, first_name, last_name, collaborator_id } = (req as any).body;
       
       const id = await userService.createUser({
         company_id: user.company_id,
@@ -39,17 +39,64 @@ export class UserController {
         collaborator_id: collaborator_id || null
       });
 
-      // Asignar roles iniciales
-      if (role_ids && role_ids.length > 0) {
-        for (const roleId of role_ids) {
-          await pool.execute('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)', [id, roleId]);
-        }
-      }
-
-      await logAudit(req, 'CREATE', 'users', id, { email, linked_collaborator: !!collaborator_id });
+      await logAudit(req, 'CREATE', 'users', id, { email });
       (res as any).status(201).json({ id });
     } catch (err: any) {
       (res as any).status(400).json({ error: err.message });
+    }
+  }
+
+  async update(req: Request, res: Response) {
+    try {
+      const { id } = (req as any).params;
+      const { email, first_name, last_name, collaborator_id } = (req as any).body;
+      const user = (req as any).user;
+
+      await pool.execute('UPDATE users SET email = ?, first_name = ?, last_name = ?, collaborator_id = ? WHERE id = ? AND company_id = ?', [
+        email, first_name, last_name, collaborator_id || null, id, user.company_id
+      ]);
+
+      await logAudit(req, 'UPDATE', 'users', id, { email });
+      (res as any).json({ success: true });
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
+  }
+
+  async delete(req: Request, res: Response) {
+    try {
+      const { id } = (req as any).params;
+      const user = (req as any).user;
+
+      // No permitir auto-eliminación
+      if (id === user.id) throw new Error('No puedes eliminar tu propio usuario.');
+
+      // Validar si tiene bitácora de auditoría (Excluyendo la creación)
+      const [logs]: any = await pool.execute('SELECT COUNT(*) as count FROM system_logs WHERE user_id = ? AND action != "CREATE"', [id]);
+      if (logs[0].count > 0) {
+        throw new Error('El usuario tiene actividad registrada y no puede ser eliminado por razones de auditoría.');
+      }
+
+      await pool.execute('DELETE FROM users WHERE id = ? AND company_id = ?', [id, user.company_id]);
+      await logAudit(req, 'DELETE', 'users', id);
+      (res as any).json({ success: true });
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
+  }
+
+  async getLogs(req: Request, res: Response) {
+    try {
+      const { id } = (req as any).params;
+      const user = (req as any).user;
+      const [rows]: any = await pool.execute(`
+        SELECT * FROM system_logs 
+        WHERE user_id = ? AND (company_id = ? OR company_id IS NULL)
+        ORDER BY createdAt DESC LIMIT 100
+      `, [id, user.company_id]);
+      (res as any).json(rows);
+    } catch (err: any) {
+      (res as any).status(500).json({ error: err.message });
     }
   }
 
@@ -57,9 +104,9 @@ export class UserController {
     try {
       const { id } = (req as any).params;
       const [rows]: any = await pool.execute(`
-        SELECT p.id, p.code, p.module, 
+        SELECT p.id, p.code, p.module, p.description, 
         EXISTS(SELECT 1 FROM user_permissions up WHERE up.user_id = ? AND up.permission_id = p.id) as is_direct
-        FROM permissions p
+        FROM permissions p ORDER BY p.module, p.description
       `, [id]);
       (res as any).json(rows);
     } catch (err: any) {
@@ -71,8 +118,7 @@ export class UserController {
     try {
       const { id } = (req as any).params;
       const { permission_ids } = (req as any).body;
-      const user = (req as any).user;
-
+      
       await pool.execute('DELETE FROM user_permissions WHERE user_id = ?', [id]);
       for (const pId of permission_ids) {
         await pool.execute('INSERT INTO user_permissions (user_id, permission_id) VALUES (?, ?)', [id, pId]);
