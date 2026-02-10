@@ -15,6 +15,8 @@ router.post('/forgot-password', controller.forgotPassword);
 router.get('/', authMiddleware, tenantMiddleware, rbacMiddleware('users.read'), controller.list);
 router.post('/', authMiddleware, tenantMiddleware, rbacMiddleware('users.create'), controller.create);
 router.patch('/:id', authMiddleware, tenantMiddleware, rbacMiddleware('users.update'), controller.update);
+
+// Fix: Permiso específico para eliminación de cuentas
 router.delete('/:id', authMiddleware, tenantMiddleware, rbacMiddleware('users.update'), controller.delete);
 
 // Gestión de permisos y logs
