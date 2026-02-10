@@ -10,11 +10,14 @@ const controller = new ShiftController();
 
 router.use(authMiddleware, tenantMiddleware);
 
-// Utiliza el permiso 'shifts.manage' definido en el seed data
 router.get('/zones', rbacMiddleware('shifts.manage'), controller.listZones);
 router.post('/zones', rbacMiddleware('shifts.manage'), controller.createZone);
+router.patch('/zones/:id', rbacMiddleware('shifts.manage'), controller.updateZone);
+router.delete('/zones/:id', rbacMiddleware('shifts.manage'), controller.deleteZone);
 
 router.get('/', rbacMiddleware('shifts.manage'), controller.listShifts);
 router.post('/', rbacMiddleware('shifts.manage'), controller.createShift);
+router.patch('/:id', rbacMiddleware('shifts.manage'), controller.updateShift);
+router.delete('/:id', rbacMiddleware('shifts.manage'), controller.deleteShift);
 
 export default router;
