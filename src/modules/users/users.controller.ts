@@ -156,11 +156,18 @@ export class UserController {
   async list(req: Request, res: Response) {
     try {
       const user = (req as any).user;
+      const { search } = (req as any).query;
+
       const [rows]: any = await pool.execute(`
         SELECT u.*, (SELECT GROUP_CONCAT(role_id) FROM user_roles WHERE user_id = u.id) as role_ids_str
         FROM users u WHERE u.company_id = ?
       `, [user.company_id]);
+      
       const usersWithRoles = rows.map((u: any) => ({ ...u, role_ids: u.role_ids_str ? u.role_ids_str.split(',') : [] }));
+      
+      // Registrar evento de auditoría de consulta con filtro
+      await logAudit(req, 'LIST', 'users', undefined, { filter: search || 'all' });
+
       (res as any).json(usersWithRoles);
     } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
   }
