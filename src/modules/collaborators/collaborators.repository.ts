@@ -6,7 +6,10 @@ export class CollaboratorRepository {
   // --- Collaborators ---
   async findAll(companyId: string) {
     const [rows]: any = await pool.execute(`
-      SELECT c.*
+      SELECT c.*, 
+      (SELECT contract_code FROM contracts con 
+       WHERE con.collaborator_id = c.id AND con.status = 'Activo' 
+       ORDER BY con.createdAt DESC LIMIT 1) as last_contract_code
       FROM collaborators c
       WHERE c.company_id = ?
     `, [companyId]);
