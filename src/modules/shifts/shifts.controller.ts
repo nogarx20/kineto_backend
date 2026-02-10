@@ -96,22 +96,22 @@ export class ShiftController {
       
       await pool.execute(`
         UPDATE shifts 
-        SET name = ?, prefix = ?, start_time = ?, end_time = ?, 
-            entry_buffer_minutes = ?, exit_buffer_minutes = ?, marking_zone_id = ?
+        SET name = ?, prefix = ?, shift_type = ?, 
+            start_time = ?, end_time = ?, start_time_2 = ?, end_time_2 = ?,
+            entry_start_buffer = ?, entry_end_buffer = ?, exit_start_buffer = ?, exit_end_buffer = ?,
+            entry_start_buffer_2 = ?, entry_end_buffer_2 = ?, exit_start_buffer_2 = ?, exit_end_buffer_2 = ?,
+            rounding = ?, lunch_start = ?, lunch_end = ?, marking_zone_id = ?
         WHERE id = ? AND company_id = ?
       `, [
-        body.name, body.prefix, body.start_time, body.end_time, 
-        body.entry_buffer_minutes, body.exit_buffer_minutes, body.marking_zone_id || null, 
+        body.name, body.prefix, body.shift_type || 'Simple',
+        body.start_time, body.end_time, body.start_time_2 || null, body.end_time_2 || null,
+        body.entry_start_buffer || 15, body.entry_end_buffer || 15, body.exit_start_buffer || 15, body.exit_end_buffer || 15,
+        body.entry_start_buffer_2 || 15, body.entry_end_buffer_2 || 15, body.exit_start_buffer_2 || 15, body.exit_end_buffer_2 || 15,
+        body.rounding || 0, body.lunch_start || null, body.lunch_end || null, body.marking_zone_id || null,
         id, user.company_id
       ]);
 
-      const changes: any = {};
-      const fields = ['name', 'prefix', 'start_time', 'end_time', 'marking_zone_id'];
-      fields.forEach(f => {
-        if (old[0] && old[0][f] !== body[f]) changes[f] = { from: old[0][f], to: body[f] };
-      });
-
-      await logAudit(req, 'UPDATE', 'shifts', id, { changes, payload: body });
+      await logAudit(req, 'UPDATE', 'shifts', id, { payload: body });
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
