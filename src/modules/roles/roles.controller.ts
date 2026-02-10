@@ -12,7 +12,9 @@ export class RoleController {
     try {
       const user = (req as any).user;
       const [roles]: any = await pool.execute(`
-        SELECT r.*, (SELECT COUNT(*) FROM role_permissions rp WHERE rp.role_id = r.id) as perm_count
+        SELECT r.*, 
+        (SELECT COUNT(*) FROM role_permissions rp WHERE rp.role_id = r.id) as perm_count,
+        (SELECT COUNT(*) FROM user_roles ur WHERE ur.role_id = r.id) as user_count
         FROM roles r WHERE r.company_id = ?
       `, [user.company_id]);
       (res as any).json(roles);
@@ -66,10 +68,13 @@ export class RoleController {
       const [old]: any = await pool.execute('SELECT * FROM roles WHERE id = ? AND company_id = ?', [id, user.company_id]);
       if (old.length === 0) throw new Error('Rol no encontrado');
 
-      // Validar si hay usuarios vinculados antes de eliminar
+      // VALIDACIÓN CRÍTICA: Impedir eliminación si hay usuarios vinculados
       const [users]: any = await pool.execute('SELECT COUNT(*) as count FROM user_roles WHERE role_id = ?', [id]);
       if (users[0].count > 0) {
-        throw new Error(`Integridad de Datos: El rol '${old[0].name}' tiene ${users[0].count} usuarios asignados. Revise y reasigne los perfiles antes de eliminar para evitar inconsistencias en la seguridad.`);
+        return (res as any).status(400).json({ 
+          error: 'Restricción de Integridad',
+          message: `No es posible eliminar el rol '${old[0].name}' porque tiene ${users[0].count} usuarios asignados. Debe desvincular a los usuarios de este perfil antes de proceder para garantizar la consistencia de los permisos.` 
+        });
       }
 
       await pool.execute('DELETE FROM roles WHERE id = ? AND company_id = ?', [id, user.company_id]);
