@@ -40,7 +40,6 @@ export class UserController {
         }
       }
 
-      // Auditoría: Guardar objeto completo creado
       await logAudit(req, 'CREATE', 'users', id, body);
       (res as any).status(201).json({ id });
     } catch (err: any) {
@@ -54,7 +53,6 @@ export class UserController {
       const body = (req as any).body;
       const user = (req as any).user;
 
-      // 1. Obtener estado anterior para el DIFF
       const [oldRows]: any = await pool.execute('SELECT * FROM users WHERE id = ?', [id]);
       const oldData = oldRows[0];
 
@@ -75,7 +73,6 @@ export class UserController {
         }
       }
 
-      // 2. Calcular diferencias
       const changes: any = {};
       const fields = ['email', 'first_name', 'last_name', 'is_locked'];
       fields.forEach(field => {
@@ -97,10 +94,19 @@ export class UserController {
       const { id } = (req as any).params;
       const user = (req as any).user;
 
-      // Obtener datos antes de borrar para respaldo en logs
+      // 1. Verificar si el usuario existe
       const [rows]: any = await pool.execute('SELECT * FROM users WHERE id = ?', [id]);
       if (rows.length === 0) throw new Error('Usuario no encontrado');
 
+      // 2. Verificar integridad referencial con bitácora de auditoría
+      const [logCheck]: any = await pool.execute('SELECT COUNT(*) as log_count FROM system_logs WHERE user_id = ?', [id]);
+      if (logCheck[0].log_count > 0) {
+        return (res as any).status(400).json({ 
+          error: 'Restricción de Integridad: Este usuario posee registros históricos en la bitácora de auditoría y no puede ser eliminado por razones de trazabilidad corporativa. Se recomienda bloquear el acceso en su lugar.' 
+        });
+      }
+
+      // 3. Proceder con la eliminación
       await pool.execute('DELETE FROM users WHERE id = ? AND company_id = ?', [id, user.company_id]);
       
       await logAudit(req, 'DELETE', 'users', id, { deleted_record: rows[0] });
@@ -120,7 +126,6 @@ export class UserController {
         ORDER BY createdAt DESC LIMIT 100
       `, [id, user.company_id]);
       
-      // Asegurar que detalles sea parseado si viene como string
       const parsedRows = rows.map((r: any) => ({
         ...r,
         details: typeof r.details === 'string' ? JSON.parse(r.details) : r.details
