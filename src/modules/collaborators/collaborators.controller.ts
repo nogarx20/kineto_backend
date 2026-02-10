@@ -52,7 +52,6 @@ export class CollaboratorController {
       const { id } = (req as any).params;
       const user = (req as any).user;
 
-      // Verificación de integridad en múltiples tablas
       const checks = [
         { table: 'contracts', label: 'Contratos Laborales', query: 'SELECT COUNT(*) as count FROM contracts WHERE collaborator_id = ?' },
         { table: 'schedules', label: 'Programación de Turnos', query: 'SELECT COUNT(*) as count FROM schedules WHERE collaborator_id = ?' },
@@ -73,7 +72,7 @@ export class CollaboratorController {
           error: 'Restricción de Integridad',
           message: `Acción denegada: El colaborador posee registros vinculados que impiden su eliminación directa:\n\n` + 
                    activeReferences.map(ref => `• ${ref}`).join('\n') + 
-                   `\n\nDebe eliminar estas dependencias antes de proceder.`
+                   `\n\nDebe eliminar estas dependencias antes de proceder con el borrado definitivo.`
         });
       }
 
@@ -101,16 +100,23 @@ export class CollaboratorController {
       const body = (req as any).body;
       const id = generateUUID();
 
-      // Esquema de Código automático: PREFIX_CC-CONSECUTIVO
+      // Obtener prefijo del CC
       const [cc]: any = await pool.execute('SELECT code FROM cost_centers WHERE id = ?', [body.cost_center_id]);
       const prefix = cc[0]?.code || 'CON';
-      const [count]: any = await pool.execute('SELECT COUNT(*) as count FROM contracts WHERE company_id = ? AND cost_center_id = ?', [user.company_id, body.cost_center_id]);
-      const serial = (count[0].count + 1).toString().padStart(3, '0');
-      const contract_code = `${prefix}-${serial}`;
 
-      // Lógica de estado automático basado en fecha final
+      // Obtener el siguiente consecutivo real buscando el MAX actual
+      const [maxRows]: any = await pool.execute(`
+        SELECT MAX(CAST(SUBSTRING_INDEX(contract_code, '-', -1) AS UNSIGNED)) as max_serial 
+        FROM contracts 
+        WHERE company_id = ? AND cost_center_id = ?
+      `, [user.company_id, body.cost_center_id]);
+      
+      const nextSerial = (maxRows[0].max_serial || 0) + 1;
+      const contract_code = `${prefix}-${nextSerial.toString().padStart(3, '0')}`;
+
+      // Lógica de estado inicial
       let status = body.status || 'Activo';
-      if (body.end_date) status = 'Inactivo';
+      if (body.end_date && status === 'Activo') status = 'Inactivo';
 
       await (service as any).repository.createContract({ ...body, id, company_id: user.company_id, contract_code, status });
       (res as any).status(201).json({ id, contract_code });
@@ -125,9 +131,14 @@ export class CollaboratorController {
       const body = (req as any).body;
       const user = (req as any).user;
 
-      // Validación de regla de negocio para estado Inactivo
+      // Validación estricta de estado Inactivo
       if (body.status === 'Inactivo' && !body.end_date) {
-        throw new Error('Debe especificar obligatoriamente una fecha de terminación para marcar el contrato como Inactivo.');
+        throw new Error('Regla de Negocio: Para marcar un contrato como "Inactivo" debe definir obligatoriamente la fecha de terminación.');
+      }
+
+      // Sincronización automática de estado si se agrega fecha final
+      if (body.end_date && body.status === 'Activo') {
+        body.status = 'Inactivo';
       }
 
       await (service as any).repository.updateContract(id, user.company_id, body);
@@ -142,20 +153,20 @@ export class CollaboratorController {
       const { id } = (req as any).params;
       const user = (req as any).user;
 
-      // Obtener el colaborador de este contrato para cruzar con registros de asistencia/programación
-      const [con]: any = await pool.execute('SELECT collaborator_id FROM contracts WHERE id = ?', [id]);
+      const [con]: any = await pool.execute('SELECT collaborator_id, contract_code FROM contracts WHERE id = ?', [id]);
       if (con.length === 0) throw new Error('Contrato no encontrado');
       const collabId = con[0].collaborator_id;
 
-      // Verificación de integridad en tablas relacionales operativas
+      // Barrido de integridad operativa
       const checks = [
-        { table: 'schedules', label: 'Programación de Turnos', query: 'SELECT COUNT(*) as count FROM schedules WHERE collaborator_id = ?' },
-        { table: 'attendance_records', label: 'Registros de Asistencia', query: 'SELECT COUNT(*) as count FROM attendance_records WHERE collaborator_id = ?' }
+        { table: 'schedules', label: 'Programación de Turnos', query: 'SELECT COUNT(*) as count FROM schedules WHERE collaborator_id = ? AND company_id = ?' },
+        { table: 'attendance_records', label: 'Registros de Asistencia', query: 'SELECT COUNT(*) as count FROM attendance_records WHERE collaborator_id = ? AND company_id = ?' },
+        { table: 'novelties', label: 'Novedades/Licencias', query: 'SELECT COUNT(*) as count FROM novelties WHERE collaborator_id = ? AND company_id = ?' }
       ];
 
       const activeRefs = [];
       for (const check of checks) {
-        const [result]: any = await pool.execute(check.query, [collabId]);
+        const [result]: any = await pool.execute(check.query, [collabId, user.company_id]);
         if (result[0].count > 0) {
           activeRefs.push(`${check.label} (${result[0].count} registros)`);
         }
@@ -164,9 +175,9 @@ export class CollaboratorController {
       if (activeRefs.length > 0) {
         return (res as any).status(400).json({ 
           error: 'Restricción de Integridad',
-          message: `No se puede eliminar el contrato porque el colaborador tiene registros operativos vinculados en:\n\n` + 
+          message: `No es posible eliminar el contrato ${con[0].contract_code} porque el sistema detectó registros vinculados en:\n\n` + 
                    activeRefs.map(ref => `• ${ref}`).join('\n') + 
-                   `\n\nConsidere marcar el contrato como "Inactivo" o "Cancelado".`
+                   `\n\nSe recomienda cambiar el estado del contrato a "Cancelado" o "Inactivo" para preservar la trazabilidad histórica.`
         });
       }
 
@@ -177,7 +188,7 @@ export class CollaboratorController {
     }
   }
 
-  // --- Auxiliaries ---
+  // --- Auxiliares ---
   async listPositions(req: Request, res: Response) {
     try {
       const user = (req as any).user;
@@ -216,7 +227,7 @@ export class CollaboratorController {
       if (usage[0].count > 0) {
         return (res as any).status(400).json({ 
           error: 'Restricción de Integridad',
-          message: `El cargo '${old[0].name}' está en uso en ${usage[0].count} contratos actuales.`
+          message: `Acción bloqueada: El cargo '${old[0].name}' está asignado a ${usage[0].count} contratos vigentes.`
         });
       }
       await pool.execute('DELETE FROM positions WHERE id = ? AND company_id = ?', [id, user.company_id]);
@@ -261,7 +272,7 @@ export class CollaboratorController {
       if (usage[0].count > 0) {
         return (res as any).status(400).json({ 
           error: 'Restricción de Integridad',
-          message: `El centro de costo tiene ${usage[0].count} contratos vinculados y no puede eliminarse.`
+          message: `Acción bloqueada: Este centro de costo posee ${usage[0].count} contratos activos asociados.`
         });
       }
       await pool.execute('DELETE FROM cost_centers WHERE id = ? AND company_id = ?', [id, user.company_id]);
