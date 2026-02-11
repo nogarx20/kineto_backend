@@ -12,6 +12,7 @@ export class ShiftController {
     try {
       const user = (req as any).user;
       const data = await service.getZones(user.company_id);
+      await logAudit(req, 'LIST', 'marking_zones');
       (res as any).json(data);
     } catch (err: any) {
       (res as any).status(500).json({ error: err.message });
@@ -69,6 +70,7 @@ export class ShiftController {
     try {
       const user = (req as any).user;
       const data = await service.getShifts(user.company_id);
+      await logAudit(req, 'LIST', 'shifts');
       (res as any).json(data);
     } catch (err: any) {
       (res as any).status(500).json({ error: err.message });
