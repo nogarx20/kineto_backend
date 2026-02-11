@@ -9,6 +9,7 @@ export class CollaboratorRepository {
       SELECT 
         c.*, 
         con.position_name,
+        con.cost_center_id,
         cc.code as cost_center_code,
         con.contract_code as last_contract_code
       FROM collaborators c
