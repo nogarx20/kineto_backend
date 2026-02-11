@@ -16,7 +16,7 @@ export class AttendanceService {
         throw new Error('El perfil del colaborador se encuentra inhabilitado.');
     }
 
-    // 2. Verificar Contrato Activo (Nueva Regla de Negocio)
+    // 2. Verificar Contrato Activo
     const activeContract = await this.repository.findActiveContract(collaborator.id, companyId);
     if (!activeContract) {
         throw new Error('Acceso Denegado: No se detectó un contrato laboral activo para este colaborador.');
@@ -37,8 +37,22 @@ export class AttendanceService {
     if (lat && lng) {
         const zones = await this.shiftRepository.findAllZones(companyId);
         for (const zone of zones) {
-            const distance = this.calculateDistance(lat, lng, zone.lat, zone.lng);
-            if (distance <= zone.radius) {
+            let isInside = false;
+
+            if (zone.zone_type === 'circle' || !zone.zone_type) {
+                const distance = this.calculateDistance(lat, lng, zone.lat, zone.lng);
+                isInside = distance <= zone.radius;
+            } else if (zone.zone_type === 'rectangle' || zone.zone_type === 'square') {
+                const bounds = typeof zone.bounds === 'string' ? JSON.parse(zone.bounds) : zone.bounds;
+                if (bounds) {
+                    isInside = (
+                        lat >= bounds.south && lat <= bounds.north &&
+                        lng >= bounds.west && lng <= bounds.east
+                    );
+                }
+            }
+
+            if (isInside) {
                 markingZoneId = zone.id;
                 if (schedule?.marking_zone_id) {
                     if (schedule.marking_zone_id === zone.id) isValidZone = true;
