@@ -12,7 +12,10 @@ export class ShiftController {
     try {
       const user = (req as any).user;
       const data = await service.getZones(user.company_id);
+      
+      // Registro de auditoría para la consulta de geocercas
       await logAudit(req, 'LIST', 'marking_zones');
+      
       (res as any).json(data);
     } catch (err: any) {
       (res as any).status(500).json({ error: err.message });
@@ -36,17 +39,20 @@ export class ShiftController {
       const { id } = (req as any).params;
       const body = (req as any).body;
       const user = (req as any).user;
-      const [old]: any = await pool.execute('SELECT * FROM marking_zones WHERE id = ?', [id]);
+      const [oldRows]: any = await pool.execute('SELECT * FROM marking_zones WHERE id = ?', [id]);
+      const oldData = oldRows[0];
       
       await pool.execute(
-        'UPDATE marking_zones SET name = ?, lat = ?, lng = ?, radius = ? WHERE id = ? AND company_id = ?',
-        [body.name, body.lat, body.lng, body.radius, id, user.company_id]
+        'UPDATE marking_zones SET name = ?, lat = ?, lng = ?, radius = ?, zone_type = ?, bounds = ? WHERE id = ? AND company_id = ?',
+        [body.name, body.lat, body.lng, body.radius, body.zone_type || 'circle', body.bounds ? JSON.stringify(body.bounds) : null, id, user.company_id]
       );
 
       const changes: any = {};
-      const fields = ['name', 'lat', 'lng', 'radius'];
+      const fields = ['name', 'lat', 'lng', 'radius', 'zone_type'];
       fields.forEach(f => {
-        if (old[0] && old[0][f] != body[f]) changes[f] = { from: old[0][f], to: body[f] };
+        if (oldData && oldData[f] != body[f]) {
+          changes[f] = { from: oldData[f], to: body[f] };
+        }
       });
 
       await logAudit(req, 'UPDATE', 'marking_zones', id, { changes, payload: body });
@@ -70,7 +76,10 @@ export class ShiftController {
     try {
       const user = (req as any).user;
       const data = await service.getShifts(user.company_id);
+      
+      // Registro de auditoría para la consulta de turnos operativos
       await logAudit(req, 'LIST', 'shifts');
+
       (res as any).json(data);
     } catch (err: any) {
       (res as any).status(500).json({ error: err.message });
@@ -94,7 +103,8 @@ export class ShiftController {
       const { id } = (req as any).params;
       const body = (req as any).body;
       const user = (req as any).user;
-      const [old]: any = await pool.execute('SELECT * FROM shifts WHERE id = ?', [id]);
+      const [oldRows]: any = await pool.execute('SELECT * FROM shifts WHERE id = ?', [id]);
+      const oldData = oldRows[0];
       
       await pool.execute(`
         UPDATE shifts 
@@ -113,7 +123,15 @@ export class ShiftController {
         id, user.company_id
       ]);
 
-      await logAudit(req, 'UPDATE', 'shifts', id, { payload: body });
+      const changes: any = {};
+      const fields = ['name', 'prefix', 'shift_type', 'start_time', 'end_time', 'marking_zone_id'];
+      fields.forEach(f => {
+        if (oldData && oldData[f] != body[f]) {
+          changes[f] = { from: oldData[f], to: body[f] };
+        }
+      });
+
+      await logAudit(req, 'UPDATE', 'shifts', id, { changes, payload: body });
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
