@@ -11,6 +11,7 @@ export class NoveltyController {
     try {
       const user = (req as any).user;
       const data = await service.getNovelties(user.company_id);
+      await logAudit(req, 'LIST', 'novelties');
       (res as any).json(data);
     } catch (err: any) {
       (res as any).status(500).json({ error: err.message });
