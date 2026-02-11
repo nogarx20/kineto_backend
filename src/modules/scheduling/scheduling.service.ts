@@ -10,7 +10,7 @@ export class SchedulingService {
     return await this.repository.findByDateRange(companyId, startDate, endDate);
   }
 
-  async assignShift(companyId: string, collaboratorId: string, shiftId: string, date: string) {
+  async assignShift(companyId: string, collaboratorId: string, shiftId: string, date: string, costCenterId?: string) {
     // Validar contrato activo para la fecha de programación
     const [contracts]: any = await pool.execute(`
       SELECT status, start_date, end_date FROM contracts 
@@ -28,18 +28,19 @@ export class SchedulingService {
       company_id: companyId,
       collaborator_id: collaboratorId,
       shift_id: shiftId,
+      cost_center_id: costCenterId,
       date
     });
     return { success: true };
   }
 
-  async bulkAssign(companyId: string, assignments: Array<{collaboratorId: string, shiftId: string, date: string}>) {
+  async bulkAssign(companyId: string, assignments: Array<{collaboratorId: string, shiftId: string, date: string, costCenterId?: string}>) {
     let successCount = 0;
     let errors = [];
 
     for (const item of assignments) {
       try {
-        await this.assignShift(companyId, item.collaboratorId, item.shiftId, item.date);
+        await this.assignShift(companyId, item.collaboratorId, item.shiftId, item.date, item.costCenterId);
         successCount++;
       } catch (err: any) {
         errors.push({ date: item.date, error: err.message });
