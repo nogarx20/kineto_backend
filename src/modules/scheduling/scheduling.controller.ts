@@ -16,7 +16,6 @@ export class SchedulingController {
       }
 
       const data = await service.getSchedule(user.company_id, startDate as string, endDate as string);
-      await logAudit(req, 'LIST', 'schedules', undefined, { startDate, endDate });
       (res as any).json(data);
     } catch (err: any) {
       (res as any).status(500).json({ error: err.message });
@@ -26,11 +25,11 @@ export class SchedulingController {
   async assign(req: Request, res: Response) {
     try {
       const user = (req as any).user;
-      const { collaboratorId, shiftId, date } = (req as any).body;
+      const { collaboratorId, shiftId, date, costCenterId } = (req as any).body;
       
-      await service.assignShift(user.company_id, collaboratorId, shiftId, date);
+      await service.assignShift(user.company_id, collaboratorId, shiftId, date, costCenterId);
       
-      await logAudit(req, 'ASSIGN_SHIFT', 'schedules', undefined, { collaboratorId, date });
+      await logAudit(req, 'ASSIGN_SHIFT', 'schedules', undefined, { collaboratorId, date, costCenterId });
       (res as any).json({ success: true });
     } catch (err: any) {
       (res as any).status(400).json({ error: err.message });
