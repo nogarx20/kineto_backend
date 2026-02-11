@@ -95,6 +95,7 @@ export class RoleController {
         SELECT p.*, EXISTS(SELECT 1 FROM role_permissions rp WHERE rp.role_id = ? AND rp.permission_id = p.id) as assigned
         FROM permissions p ORDER BY p.module, p.name
       `, [id]);
+      await logAudit(req, 'GET_ROLE_PERMISSIONS', 'roles', id);
       (res as any).json(rows);
     } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
   }
@@ -125,6 +126,7 @@ export class RoleController {
         WHERE u.company_id = ?
         ORDER BY u.first_name, u.last_name
       `, [id, user.company_id]);
+      await logAudit(req, 'GET_ROLE_USERS', 'roles', id);
       (res as any).json(rows);
     } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
   }
