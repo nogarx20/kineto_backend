@@ -1,3 +1,4 @@
+
 import { Request, Response } from 'express';
 import { SchedulingService } from './scheduling.service';
 import { logAudit } from '../../middlewares/audit.middleware';
@@ -15,6 +16,7 @@ export class SchedulingController {
       }
 
       const data = await service.getSchedule(user.company_id, startDate as string, endDate as string);
+      await logAudit(req, 'LIST', 'schedules', undefined, { startDate, endDate });
       (res as any).json(data);
     } catch (err: any) {
       (res as any).status(500).json({ error: err.message });
