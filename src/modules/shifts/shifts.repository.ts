@@ -10,10 +10,10 @@ export class ShiftRepository {
   }
 
   async createZone(data: any) {
-    const { id, company_id, name, lat, lng, radius } = data;
+    const { id, company_id, name, lat, lng, radius, zone_type, bounds } = data;
     await pool.execute(
-      'INSERT INTO marking_zones (id, company_id, name, lat, lng, radius) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, company_id, name, lat, lng, radius]
+      'INSERT INTO marking_zones (id, company_id, name, lat, lng, radius, zone_type, bounds) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, company_id, name, lat, lng, radius, zone_type || 'circle', bounds ? JSON.stringify(bounds) : null]
     );
     return id;
   }
