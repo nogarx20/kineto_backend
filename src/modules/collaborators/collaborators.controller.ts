@@ -106,7 +106,7 @@ export class CollaboratorController {
     try {
       const user = (req as any).user;
       const data = await (service as any).repository.listContracts(user.company_id);
-      await logAudit(req, 'LIST', 'contracts');
+      await logAudit(req, 'LIST_CONTRACTS', 'contracts');
       (res as any).json(data);
     } catch (err: any) {
       (res as any).status(500).json({ error: err.message });
@@ -142,7 +142,7 @@ export class CollaboratorController {
         status: body.status || 'Activo' 
       });
       
-      await logAudit(req, 'CREATE', 'contracts', id, { contract_code, collaborator_id: body.collaborator_id });
+      await logAudit(req, 'CREATE_CONTRACT', 'contracts', id, { contract_code, collaborator_id: body.collaborator_id });
       
       (res as any).status(201).json({ id, contract_code });
     } catch (err: any) {
@@ -158,7 +158,7 @@ export class CollaboratorController {
 
       await (service as any).repository.updateContract(id, user.company_id, body);
       
-      await logAudit(req, 'UPDATE', 'contracts', id, { payload: body });
+      await logAudit(req, 'UPDATE_CONTRACT', 'contracts', id, { payload: body });
       
       (res as any).json({ success: true });
     } catch (err: any) {
@@ -176,7 +176,7 @@ export class CollaboratorController {
 
       await (service as any).repository.deleteContract(id, user.company_id);
       
-      await logAudit(req, 'DELETE', 'contracts', id, { contract_code: con[0].contract_code });
+      await logAudit(req, 'DELETE_CONTRACT', 'contracts', id, { contract_code: con[0].contract_code });
       
       (res as any).json({ success: true });
     } catch (err: any) {
@@ -189,7 +189,7 @@ export class CollaboratorController {
     try {
       const user = (req as any).user;
       const data = await service.getPositions(user.company_id);
-      await logAudit(req, 'LIST', 'positions');
+      await logAudit(req, 'LIST_POSITIONS', 'positions');
       (res as any).json(data);
     } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
   }
@@ -199,7 +199,7 @@ export class CollaboratorController {
       const user = (req as any).user;
       const { name } = (req as any).body;
       const id = await service.createPosition(user.company_id, name);
-      await logAudit(req, 'CREATE', 'positions', id, { name });
+      await logAudit(req, 'CREATE_POSITION', 'positions', id, { name });
       (res as any).status(201).json({ id });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
@@ -210,7 +210,7 @@ export class CollaboratorController {
       const { name } = (req as any).body;
       const user = (req as any).user;
       await pool.execute('UPDATE positions SET name = ? WHERE id = ? AND company_id = ?', [name, id, user.company_id]);
-      await logAudit(req, 'UPDATE', 'positions', id, { name });
+      await logAudit(req, 'UPDATE_POSITION', 'positions', id, { name });
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
@@ -220,7 +220,7 @@ export class CollaboratorController {
       const { id } = (req as any).params;
       const user = (req as any).user;
       await pool.execute('DELETE FROM positions WHERE id = ? AND company_id = ?', [id, user.company_id]);
-      await logAudit(req, 'DELETE', 'positions', id);
+      await logAudit(req, 'DELETE_POSITION', 'positions', id);
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
@@ -229,7 +229,7 @@ export class CollaboratorController {
     try {
       const user = (req as any).user;
       const data = await service.getCostCenters(user.company_id);
-      await logAudit(req, 'LIST', 'cost_centers');
+      await logAudit(req, 'LIST_COST_CENTERS', 'cost_centers');
       (res as any).json(data);
     } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
   }
@@ -239,7 +239,7 @@ export class CollaboratorController {
       const user = (req as any).user;
       const { code, name } = (req as any).body;
       const id = await service.createCostCenter(user.company_id, code, name);
-      await logAudit(req, 'CREATE', 'cost_centers', id, { code, name });
+      await logAudit(req, 'CREATE_COST_CENTER', 'cost_centers', id, { code, name });
       (res as any).status(201).json({ id });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
@@ -250,7 +250,7 @@ export class CollaboratorController {
       const { code, name } = (req as any).body;
       const user = (req as any).user;
       await pool.execute('UPDATE cost_centers SET code = ?, name = ? WHERE id = ? AND company_id = ?', [code, name, id, user.company_id]);
-      await logAudit(req, 'UPDATE', 'cost_centers', id, { code, name });
+      await logAudit(req, 'UPDATE_COST_CENTER', 'cost_centers', id, { code, name });
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
@@ -260,7 +260,7 @@ export class CollaboratorController {
       const { id } = (req as any).params;
       const user = (req as any).user;
       await pool.execute('DELETE FROM cost_centers WHERE id = ? AND company_id = ?', [id, user.company_id]);
-      await logAudit(req, 'DELETE', 'cost_centers', id);
+      await logAudit(req, 'DELETE_COST_CENTER', 'cost_centers', id);
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
