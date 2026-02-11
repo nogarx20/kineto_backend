@@ -147,6 +147,7 @@ export class UserController {
         details: typeof r.details === 'string' ? JSON.parse(r.details) : r.details
       }));
 
+      await logAudit(req, 'GET_USER_LOGS', 'users', id);
       (res as any).json(parsedRows);
     } catch (err: any) {
       (res as any).status(500).json({ error: err.message });
@@ -181,7 +182,7 @@ export class UserController {
         FROM permissions p 
         ORDER BY p.module, p.name
       `, [id]);
-      
+      await logAudit(req, 'GET_USER_DIRECT_PERMISSIONS', 'users', id);
       (res as any).json(rows);
     } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
   }
@@ -204,6 +205,7 @@ export class UserController {
       `, [id, id]);
       
       const codes = rows.map((r: any) => r.code);
+      await logAudit(req, 'GET_EFFECTIVE_PERMISSIONS', 'users', id);
       (res as any).json(codes);
     } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
   }
