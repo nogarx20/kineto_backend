@@ -6,11 +6,14 @@ export class CollaboratorRepository {
   // --- Collaborators ---
   async findAll(companyId: string) {
     const [rows]: any = await pool.execute(`
-      SELECT c.*, 
-      (SELECT contract_code FROM contracts con 
-       WHERE con.collaborator_id = c.id AND con.status = 'Activo' 
-       ORDER BY con.createdAt DESC LIMIT 1) as last_contract_code
+      SELECT 
+        c.*, 
+        con.position_name,
+        cc.code as cost_center_code,
+        con.contract_code as last_contract_code
       FROM collaborators c
+      LEFT JOIN contracts con ON con.collaborator_id = c.id AND con.status = 'Activo'
+      LEFT JOIN cost_centers cc ON con.cost_center_id = cc.id
       WHERE c.company_id = ?
     `, [companyId]);
     return rows;
@@ -27,32 +30,32 @@ export class CollaboratorRepository {
   async create(data: any) {
     const { 
       id, company_id, identification, first_name, last_name, 
-      email, phone, address, gender, birth_date, username, password, photo 
+      email, phone, address, gender, birth_date, username, password 
     } = data;
     
     await pool.execute(`
       INSERT INTO collaborators 
-      (id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, photo)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, photo]);
+      (id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password]);
     
     return id;
   }
 
   async update(id: string, companyId: string, data: any) {
-    const { identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, is_active, photo } = data;
+    const { identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, is_active } = data;
     
     const updates = [
         'identification = ?', 'first_name = ?', 'last_name = ?', 'email = ?', 
         'phone = ?', 'address = ?', 'gender = ?', 'birth_date = ?', 
-        'username = ?', 'is_active = ?', 'photo = ?'
+        'username = ?', 'is_active = ?'
     ];
     const params: any[] = [
         identification, first_name, last_name, email, phone, 
-        address, gender, birth_date, username, is_active ? 1 : 0, photo
+        address, gender, birth_date, username, is_active ? 1 : 0
     ];
 
-    if (password !== undefined && password !== null && password !== '') {
+    if (password !== undefined && password !== null) {
         updates.push('password = ?');
         params.push(password);
     }
