@@ -27,32 +27,32 @@ export class CollaboratorRepository {
   async create(data: any) {
     const { 
       id, company_id, identification, first_name, last_name, 
-      email, phone, address, gender, birth_date, username, password 
+      email, phone, address, gender, birth_date, username, password, photo 
     } = data;
     
     await pool.execute(`
       INSERT INTO collaborators 
-      (id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password]);
+      (id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, photo)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, photo]);
     
     return id;
   }
 
   async update(id: string, companyId: string, data: any) {
-    const { identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, is_active } = data;
+    const { identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, is_active, photo } = data;
     
     const updates = [
         'identification = ?', 'first_name = ?', 'last_name = ?', 'email = ?', 
         'phone = ?', 'address = ?', 'gender = ?', 'birth_date = ?', 
-        'username = ?', 'is_active = ?'
+        'username = ?', 'is_active = ?', 'photo = ?'
     ];
     const params: any[] = [
         identification, first_name, last_name, email, phone, 
-        address, gender, birth_date, username, is_active ? 1 : 0
+        address, gender, birth_date, username, is_active ? 1 : 0, photo
     ];
 
-    if (password !== undefined && password !== null) {
+    if (password !== undefined && password !== null && password !== '') {
         updates.push('password = ?');
         params.push(password);
     }
