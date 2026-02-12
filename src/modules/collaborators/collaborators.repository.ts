@@ -83,7 +83,7 @@ export class CollaboratorRepository {
   // --- Contracts ---
   async listContracts(companyId: string) {
     const [rows]: any = await pool.execute(`
-      SELECT con.*, col.first_name, col.last_name, cc.name as cost_center_name, cc.code as cost_center_code
+      SELECT con.*, col.first_name, col.last_name, col.photo, cc.name as cost_center_name, cc.code as cost_center_code
       FROM contracts con
       JOIN collaborators col ON con.collaborator_id = col.id
       JOIN cost_centers cc ON con.cost_center_id = cc.id
