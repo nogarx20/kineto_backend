@@ -13,6 +13,8 @@ export class SchedulingRepository {
         sh.end_time,
         sh.start_time_2,
         sh.end_time_2,
+        sh.lunch_start,
+        sh.lunch_end,
         cc.code as cost_center_code,
         c.first_name, 
         c.last_name
