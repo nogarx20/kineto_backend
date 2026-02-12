@@ -49,4 +49,18 @@ export class SchedulingController {
       (res as any).status(400).json({ error: err.message });
     }
   }
+
+  async delete(req: Request, res: Response) {
+    try {
+      const { id } = (req as any).params;
+      const user = (req as any).user;
+      
+      await (service as any).repository.delete(user.company_id, id);
+      await logAudit(req, 'DELETE_SCHEDULE', 'schedules', id);
+      
+      (res as any).json({ success: true });
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
+  }
 }
