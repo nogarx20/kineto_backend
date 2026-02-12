@@ -13,7 +13,9 @@ export class CollaboratorRepository {
         cc.code as cost_center_code,
         con.contract_code as last_contract_code,
         con.start_date as contract_start,
-        con.end_date as contract_end
+        con.end_date as contract_end,
+        con.rest_days,
+        con.working_days
       FROM collaborators c
       LEFT JOIN contracts con ON con.collaborator_id = c.id AND con.status = 'Activo'
       LEFT JOIN cost_centers cc ON con.cost_center_id = cc.id
