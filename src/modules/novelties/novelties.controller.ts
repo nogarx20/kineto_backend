@@ -12,6 +12,7 @@ export class NoveltyController {
     try {
       const user = (req as any).user;
       const data = await (service as any).repository.findAllTypes(user.company_id);
+      await logAudit(req, 'LIST_NOVELTY_TYPES', 'novelty_types');
       (res as any).json(data);
     } catch (err: any) {
       (res as any).status(500).json({ error: err.message });
@@ -60,6 +61,7 @@ export class NoveltyController {
     try {
       const user = (req as any).user;
       const data = await service.getNovelties(user.company_id);
+      await logAudit(req, 'LIST_NOVELTIES', 'novelties');
       (res as any).json(data);
     } catch (err: any) {
       (res as any).status(500).json({ error: err.message });
@@ -100,10 +102,10 @@ export class NoveltyController {
       const [old]: any = await pool.execute('SELECT status FROM novelties WHERE id = ?', [id]);
       
       if (status === 'Approved') await service.approveNovelty(id);
-      else if (status === 'Rejected') await (service as any).repository.updateStatus(id, 'Rejected', reason);
+      else if (status === 'Rejected' || status === 'Pending') await (service as any).repository.updateStatus(id, status, reason);
       else throw new Error('Estado inválido');
 
-      await logAudit(req, 'UPDATE_STATUS', 'novelties', id, { 
+      await logAudit(req, `UPDATE_NOVELTY_STATUS_${status.toUpperCase()}`, 'novelties', id, { 
         changes: { status: { from: old[0]?.status, to: status }, reason } 
       });
       (res as any).json({ success: true });
