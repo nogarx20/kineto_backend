@@ -63,8 +63,8 @@ export class NoveltyRepository {
     `, [collaborator_id, novelty_type_id, start_date, end_date, start_time || null, end_time || null, details, support_file_url || null, id, companyId]);
   }
 
-  async updateStatus(id: string, status: string) {
-    await pool.execute('UPDATE novelties SET status = ? WHERE id = ?', [status, id]);
+  async updateStatus(id: string, status: string, reason?: string) {
+    await pool.execute('UPDATE novelties SET status = ?, rejection_reason = ? WHERE id = ?', [status, reason || null, id]);
   }
 
   async delete(id: string, companyId: string) {
