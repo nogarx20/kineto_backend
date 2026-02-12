@@ -7,11 +7,59 @@ import pool from '../../config/database';
 const service = new NoveltyService();
 
 export class NoveltyController {
+  // --- Tipos de Novedades ---
+  async listTypes(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const data = await (service as any).repository.findAllTypes(user.company_id);
+      (res as any).json(data);
+    } catch (err: any) {
+      (res as any).status(500).json({ error: err.message });
+    }
+  }
+
+  async createType(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const body = (req as any).body;
+      const id = await service.createNoveltyType(user.company_id, body);
+      await logAudit(req, 'CREATE_NOVELTY_TYPE', 'novelty_types', id, body);
+      (res as any).status(201).json({ id });
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
+  }
+
+  async updateType(req: Request, res: Response) {
+    try {
+      const { id } = (req as any).params;
+      const user = (req as any).user;
+      const body = (req as any).body;
+      await (service as any).repository.updateType(id, user.company_id, body);
+      await logAudit(req, 'UPDATE_NOVELTY_TYPE', 'novelty_types', id, body);
+      (res as any).json({ success: true });
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
+  }
+
+  async deleteType(req: Request, res: Response) {
+    try {
+      const { id } = (req as any).params;
+      const user = (req as any).user;
+      await (service as any).repository.deleteType(id, user.company_id);
+      await logAudit(req, 'DELETE_NOVELTY_TYPE', 'novelty_types', id);
+      (res as any).json({ success: true });
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
+  }
+
+  // --- Solicitudes de Novedades ---
   async list(req: Request, res: Response) {
     try {
       const user = (req as any).user;
       const data = await service.getNovelties(user.company_id);
-      await logAudit(req, 'LIST', 'novelties');
       (res as any).json(data);
     } catch (err: any) {
       (res as any).status(500).json({ error: err.message });
@@ -24,8 +72,21 @@ export class NoveltyController {
       const body = (req as any).body;
       const id = await service.createNovelty(user.company_id, body);
       
-      await logAudit(req, 'CREATE', 'novelties', id, body);
+      await logAudit(req, 'CREATE_NOVELTY', 'novelties', id, body);
       (res as any).status(201).json({ id });
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
+  }
+
+  async update(req: Request, res: Response) {
+    try {
+      const { id } = (req as any).params;
+      const user = (req as any).user;
+      const body = (req as any).body;
+      await (service as any).repository.update(id, user.company_id, body);
+      await logAudit(req, 'UPDATE_NOVELTY', 'novelties', id, body);
+      (res as any).json({ success: true });
     } catch (err: any) {
       (res as any).status(400).json({ error: err.message });
     }
@@ -56,8 +117,8 @@ export class NoveltyController {
       const { id } = (req as any).params;
       const user = (req as any).user;
       const [old]: any = await pool.execute('SELECT * FROM novelties WHERE id = ?', [id]);
-      await pool.execute('DELETE FROM novelties WHERE id = ? AND company_id = ?', [id, user.company_id]);
-      await logAudit(req, 'DELETE', 'novelties', id, { deleted_record: old[0] });
+      await (service as any).repository.delete(id, user.company_id);
+      await logAudit(req, 'DELETE_NOVELTY', 'novelties', id, { deleted_record: old[0] });
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
