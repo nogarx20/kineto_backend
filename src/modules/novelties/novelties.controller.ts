@@ -12,7 +12,6 @@ export class NoveltyController {
     try {
       const user = (req as any).user;
       const data = await (service as any).repository.findAllTypes(user.company_id);
-      await logAudit(req, 'LIST_NOVELTY_TYPES', 'novelty_types');
       (res as any).json(data);
     } catch (err: any) {
       (res as any).status(500).json({ error: err.message });
@@ -58,7 +57,7 @@ export class NoveltyController {
       if (usage[0].count > 0) {
         return (res as any).status(400).json({ 
           error: 'Restricción de Integridad',
-          message: `No es posible eliminar este tipo de novedad porque posee ${usage[0].count} solicitudes registradas en el historial. Para preservar la trazabilidad de la nómina, debe conservar este registro o eliminar todas las solicitudes asociadas previamente.`
+          message: `No es posible eliminar este tipo de novedad porque posee ${usage[0].count} solicitudes registradas. Debe eliminar las solicitudes asociadas antes de proceder.`
         });
       }
 
@@ -75,7 +74,6 @@ export class NoveltyController {
     try {
       const user = (req as any).user;
       const data = await service.getNovelties(user.company_id);
-      await logAudit(req, 'LIST_NOVELTIES', 'novelties');
       (res as any).json(data);
     } catch (err: any) {
       (res as any).status(500).json({ error: err.message });
