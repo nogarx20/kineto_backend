@@ -5,6 +5,18 @@ import { generateUUID } from '../../utils/uuid';
 export class NoveltyService {
   private repository = new NoveltyRepository();
 
+  // Types
+  async getNoveltyTypes(companyId: string) {
+    return await this.repository.findAllTypes(companyId);
+  }
+
+  async createNoveltyType(companyId: string, data: any) {
+    const id = generateUUID();
+    await this.repository.createType({ ...data, id, company_id: companyId });
+    return id;
+  }
+
+  // Novelties
   async getNovelties(companyId: string) {
     return await this.repository.findAll(companyId);
   }
@@ -15,7 +27,7 @@ export class NoveltyService {
       ...data,
       id,
       company_id: companyId,
-      status: 'Pending' // Por defecto pendiente de aprobación
+      status: 'Pending'
     };
     await this.repository.create(newNovelty);
     return id;
