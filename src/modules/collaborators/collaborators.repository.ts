@@ -15,7 +15,9 @@ export class CollaboratorRepository {
         con.start_date as contract_start,
         con.end_date as contract_end,
         con.rest_days,
-        con.working_days
+        con.working_days,
+        con.discount_lunch,
+        con.weekly_hours
       FROM collaborators c
       LEFT JOIN contracts con ON con.collaborator_id = c.id AND con.status = 'Activo'
       LEFT JOIN cost_centers cc ON con.cost_center_id = cc.id
@@ -93,14 +95,14 @@ export class CollaboratorRepository {
   async createContract(data: any) {
     const { 
       id, company_id, collaborator_id, cost_center_id, contract_code, start_date, end_date, 
-      position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime, status 
+      position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime, discount_lunch, status 
     } = data;
     
     await pool.execute(`
       INSERT INTO contracts 
-      (id, company_id, collaborator_id, cost_center_id, contract_code, start_date, end_date, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [id, company_id, collaborator_id, cost_center_id, contract_code, start_date, end_date || null, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime ? 1 : 0, status || 'Activo']);
+      (id, company_id, collaborator_id, cost_center_id, contract_code, start_date, end_date, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime, discount_lunch, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [id, company_id, collaborator_id, cost_center_id, contract_code, start_date, end_date || null, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime ? 1 : 0, discount_lunch ? 1 : 0, status || 'Activo']);
     
     return id;
   }
@@ -108,15 +110,15 @@ export class CollaboratorRepository {
   async updateContract(id: string, companyId: string, data: any) {
     const { 
       cost_center_id, start_date, end_date, position_name, contract_type, 
-      weekly_hours, working_days, rest_days, generates_overtime, status 
+      weekly_hours, working_days, rest_days, generates_overtime, discount_lunch, status 
     } = data;
 
     await pool.execute(`
       UPDATE contracts 
       SET cost_center_id = ?, start_date = ?, end_date = ?, position_name = ?, 
-          contract_type = ?, weekly_hours = ?, working_days = ?, rest_days = ?, generates_overtime = ?, status = ?
+          contract_type = ?, weekly_hours = ?, working_days = ?, rest_days = ?, generates_overtime = ?, discount_lunch = ?, status = ?
       WHERE id = ? AND company_id = ?
-    `, [cost_center_id, start_date, end_date || null, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime ? 1 : 0, status, id, companyId]);
+    `, [cost_center_id, start_date, end_date || null, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime ? 1 : 0, discount_lunch ? 1 : 0, status, id, companyId]);
   }
 
   async deleteContract(id: string, companyId: string) {
