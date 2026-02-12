@@ -95,16 +95,16 @@ export class NoveltyController {
   async updateStatus(req: Request, res: Response) {
     try {
       const { id } = (req as any).params;
-      const { status } = (req as any).body;
+      const { status, reason } = (req as any).body;
       
       const [old]: any = await pool.execute('SELECT status FROM novelties WHERE id = ?', [id]);
       
       if (status === 'Approved') await service.approveNovelty(id);
-      else if (status === 'Rejected') await service.rejectNovelty(id);
+      else if (status === 'Rejected') await (service as any).repository.updateStatus(id, 'Rejected', reason);
       else throw new Error('Estado inválido');
 
       await logAudit(req, 'UPDATE_STATUS', 'novelties', id, { 
-        changes: { status: { from: old[0]?.status, to: status } } 
+        changes: { status: { from: old[0]?.status, to: status }, reason } 
       });
       (res as any).json({ success: true });
     } catch (err: any) {
