@@ -30,7 +30,6 @@ export class SchedulingRepository {
   async createOrUpdate(data: any) {
     const { id, company_id, collaborator_id, shift_id, cost_center_id, date } = data;
     
-    // Upsert logic: Si ya existe programación para ese usuario en esa fecha, actualiza el turno y centro de costo
     await pool.execute(`
       INSERT INTO schedules (id, company_id, collaborator_id, shift_id, cost_center_id, date)
       VALUES (?, ?, ?, ?, ?, ?)
