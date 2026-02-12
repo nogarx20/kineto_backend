@@ -48,6 +48,20 @@ export class NoveltyController {
     try {
       const { id } = (req as any).params;
       const user = (req as any).user;
+
+      // RESTRICCIÓN: Verificar si el tipo de novedad tiene solicitudes vinculadas
+      const [usage]: any = await pool.execute(
+        'SELECT COUNT(*) as count FROM novelties WHERE novelty_type_id = ? AND company_id = ?',
+        [id, user.company_id]
+      );
+
+      if (usage[0].count > 0) {
+        return (res as any).status(400).json({ 
+          error: 'Restricción de Integridad',
+          message: `No es posible eliminar este tipo de novedad porque posee ${usage[0].count} solicitudes registradas en el historial. Para preservar la trazabilidad de la nómina, debe conservar este registro o eliminar todas las solicitudes asociadas previamente.`
+        });
+      }
+
       await (service as any).repository.deleteType(id, user.company_id);
       await logAudit(req, 'DELETE_NOVELTY_TYPE', 'novelty_types', id);
       (res as any).json({ success: true });
