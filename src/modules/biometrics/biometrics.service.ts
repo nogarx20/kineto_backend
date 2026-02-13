@@ -8,7 +8,7 @@ export class BiometricService {
   private attendanceService = new AttendanceService();
 
   // Umbral de similitud (Distancia Euclidiana). Típico 0.6 para face-api.js
-  private readonly DEFAULT_THRESHOLD = 0.6;
+  private readonly DEFAULT_THRESHOLD = 0.5;
 
   async enroll(companyId: string, collaboratorId: string, descriptor: number[]) {
     // Validar que el colaborador pertenece a la empresa y está activo
