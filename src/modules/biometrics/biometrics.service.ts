@@ -51,6 +51,12 @@ export class BiometricService {
     return { success: true, message: 'Firma facial registrada correctamente.' };
   }
 
+  // Fix: Add delete method to remove facial templates
+  async delete(companyId: string, collaboratorId: string) {
+    await this.repository.deleteTemplate(companyId, collaboratorId);
+    return { success: true, message: 'Firma facial eliminada correctamente.' };
+  }
+
   async verifyAndMark(companyId: string, identification: string, inputDescriptor: number[], coords?: { lat: number, lng: number }) {
     this.validateDescriptor(inputDescriptor);
 
