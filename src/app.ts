@@ -11,6 +11,8 @@ import attendanceRoutes from './modules/attendance/attendance.routes';
 import reportsRoutes from './modules/reports/reports.routes';
 import noveltyRoutes from './modules/novelties/novelties.routes';
 import fileRoutes from './modules/files/files.routes';
+// Importar rutas de biometría
+import biometricRoutes from './modules/biometrics/biometrics.routes';
 
 const app = express();
 
@@ -27,12 +29,13 @@ app.use('/api/v1/scheduling', schedulingRoutes);
 app.use('/api/v1/attendance', attendanceRoutes);
 app.use('/api/v1/reports', reportsRoutes);
 app.use('/api/v1/novelties', noveltyRoutes);
-app.use('/api/v1/files', fileRoutes); // Registro de módulo de archivos
+app.use('/api/v1/files', fileRoutes);
+// Montar módulo biometría
+app.use('/api/v1/biometrics', biometricRoutes);
 
 // Health check
 app.get('/health', (req, res) => (res as any).json({ status: 'ok', timestamp: new Date() }));
 
-// Error handler para rutas no encontradas
 app.use((req, res) => {
   (res as any).status(404).json({ 
     error: 'Ruta no encontrada',
@@ -40,7 +43,6 @@ app.use((req, res) => {
   });
 });
 
-// Error handler global
 app.use((err: any, req: any, res: any, next: any) => {
   console.error('Unhandled Error:', err);
   res.status(500).json({ error: 'Error interno del servidor' });
