@@ -1,24 +1,43 @@
 import { BiometricRepository } from './biometrics.repository';
 import { AttendanceService } from '../attendance/attendance.service';
-import { generateUUID } from '../../utils/uuid';
 import pool from '../../config/database';
+import { generateUUID } from '../../utils/uuid';
 
 export class BiometricService {
   private repository = new BiometricRepository();
   private attendanceService = new AttendanceService();
 
-  // Umbral de similitud (Distancia Euclidiana). Típico 0.6 para face-api.js
-  private readonly DEFAULT_THRESHOLD = 0.5;
+  private readonly DESCRIPTOR_LENGTH = 128;
+  private readonly DEFAULT_THRESHOLD = 0.55; // Un poco más estricto que 0.6 para producción
+
+  /**
+   * Valida la calidad y estructura del descriptor
+   */
+  private validateDescriptor(descriptor: number[]) {
+    if (!Array.isArray(descriptor) || descriptor.length !== this.DESCRIPTOR_LENGTH) {
+      throw new Error(`Estructura biométrica inválida: se esperan ${this.DESCRIPTOR_LENGTH} dimensiones.`);
+    }
+    if (descriptor.some(v => typeof v !== 'number' || isNaN(v))) {
+      throw new Error('El descriptor contiene valores no numéricos o inválidos.');
+    }
+    // Verificación de magnitud (Normalización L2)
+    const magnitude = Math.sqrt(descriptor.reduce((sum, v) => sum + v * v, 0));
+    if (magnitude < 0.9 || magnitude > 1.1) {
+      throw new Error('Calidad biométrica insuficiente: el vector no está normalizado.');
+    }
+  }
 
   async enroll(companyId: string, collaboratorId: string, descriptor: number[]) {
-    // Validar que el colaborador pertenece a la empresa y está activo
+    this.validateDescriptor(descriptor);
+
+    // Verificar existencia del colaborador
     const [collab]: any = await pool.execute(
       'SELECT id, is_active FROM collaborators WHERE id = ? AND company_id = ?',
       [collaboratorId, companyId]
     );
 
-    if (!collab.length) throw new Error('Colaborador no encontrado');
-    if (!collab[0].is_active) throw new Error('El colaborador no está activo');
+    if (!collab.length) throw new Error('Colaborador no encontrado en esta empresa.');
+    if (!collab[0].is_active) throw new Error('No se puede enrolar a un colaborador inactivo.');
 
     const id = generateUUID();
     await this.repository.saveTemplate({
@@ -26,60 +45,56 @@ export class BiometricService {
       company_id: companyId,
       collaborator_id: collaboratorId,
       template: descriptor,
-      provider: 'face-api-js'
+      provider: 'face-api-js-v1'
     });
 
-    return { success: true, biometric_id: id };
+    return { success: true, message: 'Firma facial registrada correctamente.' };
   }
 
   async verifyAndMark(companyId: string, identification: string, inputDescriptor: number[], coords?: { lat: number, lng: number }) {
-    // 1. Buscar colaborador por identificación
+    this.validateDescriptor(inputDescriptor);
+
+    // 1. Buscar colaborador
     const [collab]: any = await pool.execute(
       'SELECT id, first_name, last_name, is_active FROM collaborators WHERE identification = ? AND company_id = ?',
       [identification, companyId]
     );
 
-    if (!collab.length) throw new Error('Identidad no registrada');
+    if (!collab.length) throw new Error('Identidad no reconocida.');
     const target = collab[0];
-
-    if (!target.is_active) throw new Error('Perfil inhabilitado');
+    if (!target.is_active) throw new Error('Acceso denegado: Usuario inactivo.');
 
     // 2. Obtener plantilla guardada
     const storedBio = await this.repository.getTemplateByCollaborator(companyId, target.id);
-    if (!storedBio) throw new Error('No se ha enrolado biometría facial para este usuario');
+    if (!storedBio) throw new Error('No se ha registrado una firma facial para este usuario. Contacte a RRHH.');
 
-    // 3. Comparar vectores (Distancia Euclidiana)
+    // 3. Cálculo de Distancia Euclidiana
     const storedDescriptor = typeof storedBio.biometric_template === 'string' 
       ? JSON.parse(storedBio.biometric_template) 
       : storedBio.biometric_template;
 
     const distance = this.calculateEuclideanDistance(inputDescriptor, storedDescriptor);
     
-    // Obtener threshold configurable de la empresa o usar default
+    // 4. Obtener umbral configurable
     let threshold = this.DEFAULT_THRESHOLD;
     try {
       const [settings]: any = await pool.execute('SELECT settings FROM companies WHERE id = ?', [companyId]);
       if (settings.length && settings[0].settings) {
-        const parsedSettings = typeof settings[0].settings === 'string' ? JSON.parse(settings[0].settings) : settings[0].settings;
-        threshold = parsedSettings.faceIdThreshold || this.DEFAULT_THRESHOLD;
+        const parsed = typeof settings[0].settings === 'string' ? JSON.parse(settings[0].settings) : settings[0].settings;
+        threshold = parsed.faceIdThreshold || this.DEFAULT_THRESHOLD;
       }
-    } catch (e) {
-      console.warn("No se pudo cargar settings de empresa, usando default threshold");
-    }
+    } catch (e) { /* fallback a default */ }
 
+    // Validación final
     if (distance > threshold) {
-      throw new Error('Validación fallida: El rostro no coincide con la firma registrada');
+      // Log específico para auditoría de seguridad
+      throw new Error('Validación Biométrica Fallida: El rostro no coincide con el registro.');
     }
 
-    // 4. Proceder al marcaje de asistencia
-    const markingResult = await this.attendanceService.registerMarking(
-      companyId, 
-      identification, 
-      coords?.lat, 
-      coords?.lng
-    );
+    // 5. Registrar asistencia vinculada
+    const markingResult = await this.attendanceService.registerMarking(companyId, identification, coords?.lat, coords?.lng);
 
-    // 5. Actualizar registro con metadata biométrica
+    // Actualizar metadata del registro de asistencia con el score biométrico
     await pool.execute(
       'UPDATE attendance_records SET biometric_validation_id = ?, biometric_score = ? WHERE id = ?',
       [storedBio.id, distance, markingResult.id]
@@ -87,15 +102,12 @@ export class BiometricService {
 
     return {
       ...markingResult,
-      biometric_match: true,
-      confidence_score: (1 - distance).toFixed(4)
+      confidence: (1 - distance).toFixed(4),
+      match: true
     };
   }
 
   private calculateEuclideanDistance(v1: number[], v2: number[]): number {
-    if (v1.length !== v2.length) throw new Error('Dimensiones de vectores no coinciden');
-    return Math.sqrt(
-      v1.reduce((sum, val, i) => sum + Math.pow(val - v2[i], 2), 0)
-    );
+    return Math.sqrt(v1.reduce((sum, val, i) => sum + Math.pow(val - v2[i], 2), 0));
   }
 }
