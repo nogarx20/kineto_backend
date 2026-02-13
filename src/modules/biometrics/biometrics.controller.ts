@@ -1,4 +1,3 @@
-
 import { Request, Response } from 'express';
 import { BiometricService } from './biometrics.service';
 import { logAudit } from '../../middlewares/audit.middleware';
@@ -6,7 +5,7 @@ import { logAudit } from '../../middlewares/audit.middleware';
 const biometricService = new BiometricService();
 
 export class BiometricController {
-  async enroll(req: Request, res: Response) {
+  enroll = async (req: Request, res: Response) => {
     try {
       const user = (req as any).user;
       const { collaboratorId, descriptor } = (req as any).body;
@@ -24,9 +23,9 @@ export class BiometricController {
     } catch (err: any) {
       (res as any).status(400).json({ error: err.message });
     }
-  }
+  };
 
-  async verifyAndMark(req: Request, res: Response) {
+  verifyAndMark = async (req: Request, res: Response) => {
     try {
       const user = (req as any).user;
       const { identification, descriptor, lat, lng } = (req as any).body;
@@ -53,9 +52,9 @@ export class BiometricController {
       });
       (res as any).status(401).json({ error: err.message });
     }
-  }
+  };
 
-  async delete(req: Request, res: Response) {
+  delete = async (req: Request, res: Response) => {
     try {
       const user = (req as any).user;
       const { collaboratorId } = (req as any).params;
@@ -67,5 +66,5 @@ export class BiometricController {
     } catch (err: any) {
       (res as any).status(400).json({ error: err.message });
     }
-  }
+  };
 }
