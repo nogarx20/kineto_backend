@@ -1,4 +1,3 @@
-
 import pool from '../../config/database';
 
 export class CollaboratorRepository {
@@ -17,7 +16,8 @@ export class CollaboratorRepository {
         con.rest_days,
         con.working_days,
         con.discount_lunch,
-        con.weekly_hours
+        con.weekly_hours,
+        EXISTS(SELECT 1 FROM collaborator_biometrics cb WHERE cb.collaborator_id = c.id) as has_faceid
       FROM collaborators c
       LEFT JOIN contracts con ON con.collaborator_id = c.id AND con.status = 'Activo'
       LEFT JOIN cost_centers cc ON con.cost_center_id = cc.id
