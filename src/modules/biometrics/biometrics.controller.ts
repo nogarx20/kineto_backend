@@ -20,6 +20,22 @@ export class BiometricController {
     }
   };
 
+  // Fix: Add delete method to handle removal of biometric templates
+  delete = async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const { collaboratorId } = (req as any).params;
+
+      const result = await service.delete(user.company_id, collaboratorId);
+      
+      await logAudit(req, 'FACEID_DELETE_SUCCESS', 'collaborators', collaboratorId);
+      (res as any).json(result);
+    } catch (err: any) {
+      await logAudit(req, 'FACEID_DELETE_FAILED', 'collaborators', (req as any).params.collaboratorId, { error: err.message });
+      (res as any).status(400).json({ error: err.message });
+    }
+  };
+
   verifyAndMark = async (req: Request, res: Response) => {
     const { identification } = (req as any).body;
     try {
