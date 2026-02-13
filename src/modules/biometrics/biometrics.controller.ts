@@ -16,22 +16,23 @@ export class BiometricController {
       (res as any).json(result);
     } catch (err: any) {
       await logAudit(req, 'FACEID_ENROLL_FAILED', 'collaborators', (req as any).body.collaboratorId, { error: err.message });
-      (res as any).status(400).json({ error: err.message });
+      
+      // 400 para errores de calidad o datos malformados
+      (res as any).status(400).json({ 
+        code: 'QUALITY_ERROR',
+        message: err.message 
+      });
     }
   };
 
-  // Fix: Add delete method to handle removal of biometric templates
   delete = async (req: Request, res: Response) => {
     try {
       const user = (req as any).user;
       const { collaboratorId } = (req as any).params;
-
       const result = await service.delete(user.company_id, collaboratorId);
-      
       await logAudit(req, 'FACEID_DELETE_SUCCESS', 'collaborators', collaboratorId);
       (res as any).json(result);
     } catch (err: any) {
-      await logAudit(req, 'FACEID_DELETE_FAILED', 'collaborators', (req as any).params.collaboratorId, { error: err.message });
       (res as any).status(400).json({ error: err.message });
     }
   };
@@ -51,14 +52,32 @@ export class BiometricController {
       
       (res as any).json(result);
     } catch (err: any) {
-      // Importante: No devolver detalles técnicos sensibles al usuario final, pero sí loguearlos.
+      const errorMsg = err.message;
+      let statusCode = 401; // Default: No coincide
+      let errorCode = 'MATCH_FAILED';
+
+      if (errorMsg.includes('No se ha registrado')) {
+        statusCode = 404;
+        errorCode = 'NOT_ENROLLED';
+      } else if (errorMsg.includes('insuficiente') || errorMsg.includes('Estructura')) {
+        statusCode = 400;
+        errorCode = 'QUALITY_LOW';
+      } else if (errorMsg.includes('inactivo')) {
+        statusCode = 403;
+        errorCode = 'USER_DISABLED';
+      }
+
       await logAudit(req, 'FACEID_MARK_FAILED', 'attendance', undefined, { 
         identification, 
-        error: err.message 
+        errorCode,
+        error: errorMsg 
       });
       
-      const statusCode = err.message.includes('No se ha registrado') ? 404 : 401;
-      (res as any).status(statusCode).json({ error: err.message });
+      (res as any).status(statusCode).json({ 
+        code: errorCode,
+        // No enviamos el mensaje técnico del error de JS al cliente
+        message: 'Error en validación biométrica' 
+      });
     }
   };
 }
