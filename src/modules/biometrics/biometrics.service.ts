@@ -1,4 +1,3 @@
-
 import { BiometricRepository } from './biometrics.repository';
 import { AttendanceService } from '../attendance/attendance.service';
 import { generateUUID } from '../../utils/uuid';
@@ -57,8 +56,16 @@ export class BiometricService {
     const distance = this.calculateEuclideanDistance(inputDescriptor, storedDescriptor);
     
     // Obtener threshold configurable de la empresa o usar default
-    const [settings]: any = await pool.execute('SELECT settings FROM companies WHERE id = ?', [companyId]);
-    const threshold = settings[0]?.settings?.faceIdThreshold || this.DEFAULT_THRESHOLD;
+    let threshold = this.DEFAULT_THRESHOLD;
+    try {
+      const [settings]: any = await pool.execute('SELECT settings FROM companies WHERE id = ?', [companyId]);
+      if (settings.length && settings[0].settings) {
+        const parsedSettings = typeof settings[0].settings === 'string' ? JSON.parse(settings[0].settings) : settings[0].settings;
+        threshold = parsedSettings.faceIdThreshold || this.DEFAULT_THRESHOLD;
+      }
+    } catch (e) {
+      console.warn("No se pudo cargar settings de empresa, usando default threshold");
+    }
 
     if (distance > threshold) {
       throw new Error('Validación fallida: El rostro no coincide con la firma registrada');
