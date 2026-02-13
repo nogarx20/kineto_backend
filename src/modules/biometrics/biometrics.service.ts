@@ -11,24 +11,30 @@ export class BiometricService {
   private readonly DEFAULT_THRESHOLD = 0.55; // Un poco más estricto que 0.6 para producción
 
   /**
-   * Valida la calidad y estructura del descriptor
+   * Valida la estructura y normaliza el descriptor para asegurar longitud unitaria
    */
-  private validateDescriptor(descriptor: number[]) {
+  private normalizeDescriptor(descriptor: number[]): number[] {
     if (!Array.isArray(descriptor) || descriptor.length !== this.DESCRIPTOR_LENGTH) {
       throw new Error(`Estructura biométrica inválida: se esperan ${this.DESCRIPTOR_LENGTH} dimensiones.`);
     }
     if (descriptor.some(v => typeof v !== 'number' || isNaN(v))) {
       throw new Error('El descriptor contiene valores no numéricos o inválidos.');
     }
-    // Verificación de magnitud (Normalización L2)
+    
+    // Cálculo de magnitud para Normalización L2
     const magnitude = Math.sqrt(descriptor.reduce((sum, v) => sum + v * v, 0));
-    if (magnitude < 0.9 || magnitude > 1.1) {
-      throw new Error('Calidad biométrica insuficiente: el vector no está normalizado.');
+    
+    if (magnitude === 0) {
+      throw new Error('Calidad biométrica insuficiente: El sensor no capturó información válida.');
     }
+
+    // Normalizar el vector para que su magnitud sea exactamente 1.0
+    // Esto resuelve el error de "el vector no está normalizado" y mejora la precisión de la comparación
+    return descriptor.map(v => v / magnitude);
   }
 
-  async enroll(companyId: string, collaboratorId: string, descriptor: number[]) {
-    this.validateDescriptor(descriptor);
+  async enroll(companyId: string, collaboratorId: string, rawDescriptor: number[]) {
+    const descriptor = this.normalizeDescriptor(rawDescriptor);
 
     // Verificar existencia del colaborador
     const [collab]: any = await pool.execute(
@@ -57,8 +63,8 @@ export class BiometricService {
     return { success: true, message: 'Firma facial eliminada correctamente.' };
   }
 
-  async verifyAndMark(companyId: string, identification: string, inputDescriptor: number[], coords?: { lat: number, lng: number }) {
-    this.validateDescriptor(inputDescriptor);
+  async verifyAndMark(companyId: string, identification: string, inputRawDescriptor: number[], coords?: { lat: number, lng: number }) {
+    const inputDescriptor = this.normalizeDescriptor(inputRawDescriptor);
 
     // 1. Buscar colaborador
     const [collab]: any = await pool.execute(
