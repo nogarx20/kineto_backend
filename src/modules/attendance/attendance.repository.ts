@@ -7,11 +7,26 @@ export class AttendanceRepository {
       lat, lng, marking_zone_id, is_valid_zone, status, biometric_method 
     } = data;
 
+    // Aseguramos que ningún parámetro sea undefined para evitar el error del driver mysql2
+    const params = [
+      id ?? null, 
+      company_id ?? null, 
+      collaborator_id ?? null, 
+      schedule_id ?? null, 
+      type ?? null, 
+      lat ?? null, 
+      lng ?? null, 
+      marking_zone_id ?? null, 
+      is_valid_zone ? 1 : 0, 
+      status ?? 'Unknown', 
+      biometric_method || 'FACE'
+    ];
+
     await pool.execute(`
       INSERT INTO attendance_records 
       (id, company_id, collaborator_id, schedule_id, type, lat, lng, marking_zone_id, is_valid_zone, status, biometric_method)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [id, company_id, collaborator_id, schedule_id, type, lat, lng, marking_zone_id, is_valid_zone, status, biometric_method || 'FACE']);
+    `, params);
     
     return id;
   }
@@ -28,7 +43,7 @@ export class AttendanceRepository {
 
   async findTodaySchedule(companyId: string, collaboratorId: string) {
     const [rows]: any = await pool.execute(`
-      SELECT s.*, sh.start_time, sh.end_time, sh.entry_buffer_minutes, sh.marking_zone_id
+      SELECT s.*, sh.start_time, sh.end_time, sh.entry_start_buffer, sh.entry_end_buffer, sh.marking_zone_id, sh.name as shift_name
       FROM schedules s
       JOIN shifts sh ON s.shift_id = sh.id
       WHERE s.company_id = ? AND s.collaborator_id = ? AND s.date = CURDATE()
