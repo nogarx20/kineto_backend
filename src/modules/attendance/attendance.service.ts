@@ -1,4 +1,3 @@
-
 import { AttendanceRepository } from './attendance.repository';
 import { ShiftRepository } from '../shifts/shifts.repository';
 import { generateUUID } from '../../utils/uuid';
@@ -16,7 +15,7 @@ export class AttendanceService {
         throw new Error('El perfil del colaborador se encuentra inhabilitado.');
     }
 
-    // 2. Verificar Contrato Activo
+    // 2. Verificar Contrato Activo (Regla crítica de nómina)
     const activeContract = await this.repository.findActiveContract(collaborator.id, companyId);
     if (!activeContract) {
         throw new Error('Acceso Denegado: No se detectó un contrato laboral activo para este colaborador.');
@@ -27,7 +26,7 @@ export class AttendanceService {
     const lastRecord = records[0];
     const type = (!lastRecord || lastRecord.type === 'OUT') ? 'IN' : 'OUT';
 
-    // 4. Buscar programación
+    // 4. Buscar programación del día actual
     const schedule = await this.repository.findTodaySchedule(companyId, collaborator.id);
     
     // 5. Validar Geovalla
@@ -54,6 +53,7 @@ export class AttendanceService {
 
             if (isInside) {
                 markingZoneId = zone.id;
+                // Si el turno exige una zona específica, validamos contra esa. Si no, cualquier zona corporativa es válida.
                 if (schedule?.marking_zone_id) {
                     if (schedule.marking_zone_id === zone.id) isValidZone = true;
                 } else {
@@ -63,22 +63,41 @@ export class AttendanceService {
             }
         }
     } else {
-        isValidZone = true; 
+        // Si no hay coordenadas, se marca como inválido por defecto en sistemas de alta seguridad
+        isValidZone = false; 
     }
 
-    // 6. Calcular estado puntualidad
+    // 6. Validar Turno (Horario y Punctualidad)
     let status = 'Unknown';
-    if (schedule && type === 'IN') {
+    let isWithinShift = false;
+
+    if (schedule) {
         const now = new Date();
-        const [hours, minutes] = schedule.start_time.split(':');
-        const entryTime = new Date();
-        entryTime.setHours(parseInt(hours), parseInt(minutes), 0);
-        entryTime.setMinutes(entryTime.getMinutes() + schedule.entry_buffer_minutes);
+        const currentTimeMinutes = now.getHours() * 60 + now.getMinutes();
+
+        // Parsear horarios del turno
+        const [startH, startM] = schedule.start_time.split(':').map(Number);
+        const [endH, endM] = schedule.end_time.split(':').map(Number);
         
-        status = now > entryTime ? 'Late' : 'OnTime';
+        const startTimeMinutes = startH * 60 + startM;
+        const endTimeMinutes = endH * 60 + endM;
+
+        // Búferes
+        const entryStart = startTimeMinutes - (schedule.entry_start_buffer || 15);
+        const entryEnd = startTimeMinutes + (schedule.entry_end_buffer || 15);
+        const exitStart = endTimeMinutes - (schedule.exit_start_buffer || 15);
+        const exitEnd = endTimeMinutes + (schedule.exit_end_buffer || 15);
+
+        if (type === 'IN') {
+            isWithinShift = currentTimeMinutes >= entryStart && currentTimeMinutes <= entryEnd;
+            status = now.getTime() > (new Date().setHours(startH, startM + (schedule.entry_end_buffer || 0), 0)) ? 'Late' : 'OnTime';
+        } else {
+            isWithinShift = currentTimeMinutes >= exitStart && currentTimeMinutes <= exitEnd;
+            status = 'OnTime'; // Salida no suele marcarse como Late a menos que haya reglas de horas mínimas
+        }
     }
 
-    // 7. Guardar marcaje
+    // 7. Guardar marcaje (Siempre se guarda para trazabilidad, informando desviaciones)
     const id = generateUUID();
     await this.repository.createRecord({
         id,
@@ -98,7 +117,12 @@ export class AttendanceService {
         type, 
         status, 
         collaboratorName: `${collaborator.first_name} ${collaborator.last_name}`,
-        time: new Date() 
+        time: new Date(),
+        validation: {
+            shift_match: !!schedule && isWithinShift,
+            zone_match: isValidZone,
+            has_schedule: !!schedule
+        }
     };
   }
 
