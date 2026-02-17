@@ -1,18 +1,17 @@
-
 import pool from '../../config/database';
 
 export class AttendanceRepository {
   async createRecord(data: any) {
     const { 
       id, company_id, collaborator_id, schedule_id, type, 
-      lat, lng, marking_zone_id, is_valid_zone, status 
+      lat, lng, marking_zone_id, is_valid_zone, status, biometric_method 
     } = data;
 
     await pool.execute(`
       INSERT INTO attendance_records 
-      (id, company_id, collaborator_id, schedule_id, type, lat, lng, marking_zone_id, is_valid_zone, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [id, company_id, collaborator_id, schedule_id, type, lat, lng, marking_zone_id, is_valid_zone, status]);
+      (id, company_id, collaborator_id, schedule_id, type, lat, lng, marking_zone_id, is_valid_zone, status, biometric_method)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [id, company_id, collaborator_id, schedule_id, type, lat, lng, marking_zone_id, is_valid_zone, status, biometric_method || 'FACE']);
     
     return id;
   }
@@ -41,6 +40,13 @@ export class AttendanceRepository {
     const [rows]: any = await pool.execute(`
       SELECT * FROM collaborators WHERE company_id = ? AND identification = ?
     `, [companyId, identification]);
+    return rows[0];
+  }
+
+  async findCollaboratorByIdAndPin(companyId: string, identification: string, pin: string) {
+    const [rows]: any = await pool.execute(`
+      SELECT * FROM collaborators WHERE company_id = ? AND identification = ? AND pin = ?
+    `, [companyId, identification, pin]);
     return rows[0];
   }
 
