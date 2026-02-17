@@ -39,39 +39,6 @@ export class BiometricService {
     return { success: true };
   }
 
-  // --- Fingerprints ---
-  async enrollFinger(companyId: string, data: any) {
-    const { collaboratorId, fingerIndex, fingerName, template, deviceId } = data;
-    
-    const [collab]: any = await pool.execute(
-      'SELECT id FROM collaborators WHERE id = ? AND company_id = ?',
-      [collaboratorId, companyId]
-    );
-    if (!collab.length) throw new Error('Colaborador no encontrado.');
-
-    const id = generateUUID();
-    await this.repository.saveFingerprint({
-      id,
-      company_id: companyId,
-      collaborator_id: collaboratorId,
-      finger_index: fingerIndex,
-      finger_name: fingerName,
-      template: template,
-      device_id: deviceId
-    });
-
-    return { success: true, message: `Huella de ${fingerName} registrada exitosamente.` };
-  }
-
-  async listFingers(companyId: string, collaboratorId: string) {
-    return await this.repository.getFingersByCollaborator(companyId, collaboratorId);
-  }
-
-  async deleteFinger(companyId: string, collaboratorId: string, fingerIndex: number) {
-    await this.repository.deleteFingerprint(companyId, collaboratorId, fingerIndex);
-    return { success: true };
-  }
-
   async identifyAndMark(companyId: string, inputRawDescriptor: number[], coords?: { lat: number, lng: number }) {
     const inputDescriptor = this.normalizeDescriptor(inputRawDescriptor);
     
@@ -159,5 +126,34 @@ export class BiometricService {
 
   private calculateEuclideanDistance(v1: number[], v2: number[]): number {
     return Math.sqrt(v1.reduce((sum, val, i) => sum + Math.pow(val - v2[i], 2), 0));
+  }
+
+  // --- HUELLAS DACTILARES ---
+  async enrollFinger(companyId: string, collaboratorId: string, fingerName: string, template: any, deviceInfo?: any) {
+    const id = generateUUID();
+    await pool.execute(
+      `INSERT INTO collaborator_fingerprints (id, company_id, collaborator_id, finger_name, biometric_template, device_info) 
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE biometric_template = VALUES(biometric_template), device_info = VALUES(device_info)`,
+      // Fix: Corrected variable names 'company_id', 'collaborator_id', 'finger_name', and 'device_info' to match parameters
+      [id, companyId, collaboratorId, fingerName, JSON.stringify(template), deviceInfo ? JSON.stringify(deviceInfo) : null]
+    );
+    return { success: true, message: `Huella (${fingerName}) registrada.` };
+  }
+
+  async getFingers(companyId: string, collaboratorId: string) {
+    const [rows]: any = await pool.execute(
+      'SELECT id, finger_name, createdAt FROM collaborator_fingerprints WHERE company_id = ? AND collaborator_id = ?',
+      [companyId, collaboratorId]
+    );
+    return rows;
+  }
+
+  async deleteFinger(companyId: string, id: string) {
+    await pool.execute(
+      'DELETE FROM collaborator_fingerprints WHERE id = ? AND company_id = ?',
+      [id, companyId]
+    );
+    return { success: true };
   }
 }
