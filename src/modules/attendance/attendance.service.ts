@@ -6,16 +6,24 @@ export class AttendanceService {
   private repository = new AttendanceRepository();
   private shiftRepository = new ShiftRepository();
 
-  async registerMarking(companyId: string, identification: string, lat?: number, lng?: number) {
+  async registerMarking(companyId: string, identification: string, lat?: number, lng?: number, method: 'FACE' | 'FINGER' | 'PIN' = 'FACE', pin?: string) {
     // 1. Identificar colaborador
-    const collaborator = await this.repository.findCollaboratorByIdentification(companyId, identification);
+    let collaborator;
+    if (method === 'PIN') {
+      if (!pin) throw new Error('Se requiere el PIN de seguridad.');
+      collaborator = await this.repository.findCollaboratorByIdAndPin(companyId, identification, pin);
+      if (!collaborator) throw new Error('Identificación o PIN incorrectos.');
+    } else {
+      collaborator = await this.repository.findCollaboratorByIdentification(companyId, identification);
+    }
+    
     if (!collaborator) throw new Error('Identificación no encontrada en el sistema.');
 
     if (!collaborator.is_active) {
         throw new Error('El perfil del colaborador se encuentra inhabilitado.');
     }
 
-    // 2. Verificar Contrato Activo (Regla crítica de nómina)
+    // 2. Verificar Contrato Activo
     const activeContract = await this.repository.findActiveContract(collaborator.id, companyId);
     if (!activeContract) {
         throw new Error('Acceso Denegado: No se detectó un contrato laboral activo para este colaborador.');
@@ -26,7 +34,7 @@ export class AttendanceService {
     const lastRecord = records[0];
     const type = (!lastRecord || lastRecord.type === 'OUT') ? 'IN' : 'OUT';
 
-    // 4. Buscar programación del día actual
+    // 4. Buscar programación
     const schedule = await this.repository.findTodaySchedule(companyId, collaborator.id);
     
     // 5. Validar Geovalla
@@ -53,7 +61,6 @@ export class AttendanceService {
 
             if (isInside) {
                 markingZoneId = zone.id;
-                // Si el turno exige una zona específica, validamos contra esa. Si no, cualquier zona corporativa es válida.
                 if (schedule?.marking_zone_id) {
                     if (schedule.marking_zone_id === zone.id) isValidZone = true;
                 } else {
@@ -63,41 +70,22 @@ export class AttendanceService {
             }
         }
     } else {
-        // Si no hay coordenadas, se marca como inválido por defecto en sistemas de alta seguridad
-        isValidZone = false; 
+        isValidZone = true; 
     }
 
-    // 6. Validar Turno (Horario y Punctualidad)
+    // 6. Calcular estado puntualidad
     let status = 'Unknown';
-    let isWithinShift = false;
-
-    if (schedule) {
+    if (schedule && type === 'IN') {
         const now = new Date();
-        const currentTimeMinutes = now.getHours() * 60 + now.getMinutes();
-
-        // Parsear horarios del turno
-        const [startH, startM] = schedule.start_time.split(':').map(Number);
-        const [endH, endM] = schedule.end_time.split(':').map(Number);
+        const [hours, minutes] = schedule.start_time.split(':');
+        const entryTime = new Date();
+        entryTime.setHours(parseInt(hours), parseInt(minutes), 0);
+        entryTime.setMinutes(entryTime.getMinutes() + (schedule.entry_buffer_minutes || 0));
         
-        const startTimeMinutes = startH * 60 + startM;
-        const endTimeMinutes = endH * 60 + endM;
-
-        // Búferes
-        const entryStart = startTimeMinutes - (schedule.entry_start_buffer || 15);
-        const entryEnd = startTimeMinutes + (schedule.entry_end_buffer || 15);
-        const exitStart = endTimeMinutes - (schedule.exit_start_buffer || 15);
-        const exitEnd = endTimeMinutes + (schedule.exit_end_buffer || 15);
-
-        if (type === 'IN') {
-            isWithinShift = currentTimeMinutes >= entryStart && currentTimeMinutes <= entryEnd;
-            status = now.getTime() > (new Date().setHours(startH, startM + (schedule.entry_end_buffer || 0), 0)) ? 'Late' : 'OnTime';
-        } else {
-            isWithinShift = currentTimeMinutes >= exitStart && currentTimeMinutes <= exitEnd;
-            status = 'OnTime'; // Salida no suele marcarse como Late a menos que haya reglas de horas mínimas
-        }
+        status = now > entryTime ? 'Late' : 'OnTime';
     }
 
-    // 7. Guardar marcaje (Siempre se guarda para trazabilidad, informando desviaciones)
+    // 7. Guardar marcaje
     const id = generateUUID();
     await this.repository.createRecord({
         id,
@@ -109,7 +97,8 @@ export class AttendanceService {
         lng,
         marking_zone_id: markingZoneId,
         is_valid_zone: isValidZone,
-        status
+        status,
+        biometric_method: method
     });
 
     return { 
@@ -119,7 +108,7 @@ export class AttendanceService {
         collaboratorName: `${collaborator.first_name} ${collaborator.last_name}`,
         time: new Date(),
         validation: {
-            shift_match: !!schedule && isWithinShift,
+            shift_match: status === 'OnTime' || status === 'Unknown',
             zone_match: isValidZone,
             has_schedule: !!schedule
         }
