@@ -1,4 +1,3 @@
-
 import { Request, Response } from 'express';
 import { BiometricService } from './biometrics.service';
 import { logAudit } from '../../middlewares/audit.middleware';
@@ -55,7 +54,7 @@ export class BiometricController {
     }
   };
 
-  // --- HUELLAS ---
+  // --- HUELLAS DACTILARES ---
   enrollFinger = async (req: Request, res: Response) => {
     try {
       const user = (req as any).user;
