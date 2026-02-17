@@ -1,4 +1,3 @@
-
 import pool from '../../config/database';
 
 export class CompanyRepository {
@@ -11,6 +10,18 @@ export class CompanyRepository {
     return id;
   }
 
+  async update(id: string, data: any) {
+    const { name, tax_id, plan, status } = data;
+    await pool.execute(
+      'UPDATE companies SET name = ?, tax_id = ?, plan = ?, status = ? WHERE id = ?',
+      [name, tax_id, plan, status, id]
+    );
+  }
+
+  async delete(id: string) {
+    await pool.execute('DELETE FROM companies WHERE id = ?', [id]);
+  }
+
   async findById(id: string) {
     const [rows]: any = await pool.execute(
       'SELECT * FROM companies WHERE id = ?',
@@ -21,7 +32,7 @@ export class CompanyRepository {
 
   async findAll() {
     const [rows]: any = await pool.execute(
-      'SELECT id, name, tax_id, plan, status, createdAt FROM companies'
+      'SELECT id, name, tax_id, plan, status, createdAt FROM companies ORDER BY createdAt DESC'
     );
     return rows;
   }
