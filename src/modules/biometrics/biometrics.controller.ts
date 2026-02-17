@@ -54,4 +54,40 @@ export class BiometricController {
       (res as any).status(400).json({ error: err.message });
     }
   };
+
+  // --- Fingerprints ---
+  enrollFinger = async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const body = (req as any).body;
+      const result = await service.enrollFinger(user.company_id, body);
+      await logAudit(req, 'FINGER_ENROLL_SUCCESS', 'collaborators', body.collaboratorId, { finger: body.fingerName });
+      (res as any).json(result);
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
+  };
+
+  listFingers = async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const { collaboratorId } = (req as any).params;
+      const result = await service.listFingers(user.company_id, collaboratorId);
+      (res as any).json(result);
+    } catch (err: any) {
+      (res as any).status(500).json({ error: err.message });
+    }
+  };
+
+  deleteFinger = async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const { collaboratorId, fingerIndex } = (req as any).params;
+      const result = await service.deleteFinger(user.company_id, collaboratorId, parseInt(fingerIndex));
+      await logAudit(req, 'FINGER_DELETE_SUCCESS', 'collaborators', collaboratorId, { fingerIndex });
+      (res as any).json(result);
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
+  };
 }
