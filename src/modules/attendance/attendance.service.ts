@@ -19,7 +19,7 @@ export class AttendanceService {
     
     if (!collaborator) throw new Error('Identificación no encontrada en el sistema.');
 
-    if (!collaborator.is_active) {
+    if (!(collaborator.is_active == 1 || collaborator.is_active === true)) {
         throw new Error('El perfil del colaborador se encuentra inhabilitado.');
     }
 
@@ -41,7 +41,7 @@ export class AttendanceService {
     let markingZoneId = null;
     let isValidZone = false;
 
-    if (lat && lng) {
+    if (lat !== undefined && lng !== undefined && lat !== null && lng !== null) {
         const zones = await this.shiftRepository.findAllZones(companyId);
         for (const zone of zones) {
             let isInside = false;
@@ -61,6 +61,7 @@ export class AttendanceService {
 
             if (isInside) {
                 markingZoneId = zone.id;
+                // Si el turno tiene una zona específica, validamos contra esa. Si no, cualquier zona de la empresa vale.
                 if (schedule?.marking_zone_id) {
                     if (schedule.marking_zone_id === zone.id) isValidZone = true;
                 } else {
@@ -70,19 +71,25 @@ export class AttendanceService {
             }
         }
     } else {
-        isValidZone = true; 
+        // Si no hay coordenadas, por defecto marcamos como fuera de zona si se requiere geocerca, 
+        // o permitimos si la empresa no restringe. Para este caso asumiremos que sin GPS no es válida si hay zonas.
+        isValidZone = false; 
     }
 
     // 6. Calcular estado puntualidad
-    let status = 'Unknown';
+    let status = 'OnTime';
     if (schedule && type === 'IN') {
         const now = new Date();
         const [hours, minutes] = schedule.start_time.split(':');
-        const entryTime = new Date();
-        entryTime.setHours(parseInt(hours), parseInt(minutes), 0);
-        entryTime.setMinutes(entryTime.getMinutes() + (schedule.entry_buffer_minutes || 0));
         
-        status = now > entryTime ? 'Late' : 'OnTime';
+        // El buffer de entrada (tardía permitida)
+        const entryLimit = new Date();
+        entryLimit.setHours(parseInt(hours), parseInt(minutes), 0);
+        entryLimit.setMinutes(entryLimit.getMinutes() + (schedule.entry_end_buffer || 15));
+        
+        status = now > entryLimit ? 'Late' : 'OnTime';
+    } else if (!schedule) {
+        status = 'Unknown'; // Marcaje sin turno programado
     }
 
     // 7. Guardar marcaje
@@ -93,8 +100,8 @@ export class AttendanceService {
         collaborator_id: collaborator.id,
         schedule_id: schedule?.id || null,
         type,
-        lat,
-        lng,
+        lat: lat ?? null,
+        lng: lng ?? null,
         marking_zone_id: markingZoneId,
         is_valid_zone: isValidZone,
         status,
@@ -107,6 +114,7 @@ export class AttendanceService {
         status, 
         collaboratorName: `${collaborator.first_name} ${collaborator.last_name}`,
         time: new Date(),
+        shiftName: schedule?.shift_name || 'Sin Turno',
         validation: {
             shift_match: status === 'OnTime' || status === 'Unknown',
             zone_match: isValidZone,
@@ -116,7 +124,7 @@ export class AttendanceService {
   }
 
   private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R = 6371e3;
+    const R = 6371e3; // Radio de la tierra en metros
     const φ1 = lat1 * Math.PI / 180;
     const φ2 = lat2 * Math.PI / 180;
     const Δφ = (lat2 - lat1) * Math.PI / 180;
