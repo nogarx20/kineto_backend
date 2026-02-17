@@ -39,6 +39,39 @@ export class BiometricService {
     return { success: true };
   }
 
+  // --- Fingerprints ---
+  async enrollFinger(companyId: string, data: any) {
+    const { collaboratorId, fingerIndex, fingerName, template, deviceId } = data;
+    
+    const [collab]: any = await pool.execute(
+      'SELECT id FROM collaborators WHERE id = ? AND company_id = ?',
+      [collaboratorId, companyId]
+    );
+    if (!collab.length) throw new Error('Colaborador no encontrado.');
+
+    const id = generateUUID();
+    await this.repository.saveFingerprint({
+      id,
+      company_id: companyId,
+      collaborator_id: collaboratorId,
+      finger_index: fingerIndex,
+      finger_name: fingerName,
+      template: template,
+      device_id: deviceId
+    });
+
+    return { success: true, message: `Huella de ${fingerName} registrada exitosamente.` };
+  }
+
+  async listFingers(companyId: string, collaboratorId: string) {
+    return await this.repository.getFingersByCollaborator(companyId, collaboratorId);
+  }
+
+  async deleteFinger(companyId: string, collaboratorId: string, fingerIndex: number) {
+    await this.repository.deleteFingerprint(companyId, collaboratorId, fingerIndex);
+    return { success: true };
+  }
+
   async identifyAndMark(companyId: string, inputRawDescriptor: number[], coords?: { lat: number, lng: number }) {
     const inputDescriptor = this.normalizeDescriptor(inputRawDescriptor);
     
