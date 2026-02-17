@@ -38,44 +38,29 @@ export class CollaboratorRepository {
   async create(data: any) {
     const { 
       id, company_id, identification, first_name, last_name, 
-      email, phone, address, gender, birth_date, username, password, photo, pin 
+      email, phone, address, gender, birth_date, username, password, photo 
     } = data;
     
     await pool.execute(`
       INSERT INTO collaborators 
-      (id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, photo, pin)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      id, 
-      company_id, 
-      identification, 
-      first_name, 
-      last_name, 
-      email, 
-      phone, 
-      address, 
-      gender, 
-      birth_date || null, 
-      username, 
-      password, 
-      photo || null,
-      pin || null
-    ]);
+      (id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, photo)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, photo || null]);
     
     return id;
   }
 
   async update(id: string, companyId: string, data: any) {
-    const { identification, first_name, last_name, email, phone, address, gender, birth_date, username, is_active, photo, pin, password } = data;
+    const { identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, is_active, photo } = data;
     
     const updates = [
         'identification = ?', 'first_name = ?', 'last_name = ?', 'email = ?', 
         'phone = ?', 'address = ?', 'gender = ?', 'birth_date = ?', 
-        'username = ?', 'is_active = ?', 'photo = ?', 'pin = ?'
+        'username = ?', 'is_active = ?', 'photo = ?'
     ];
     const params: any[] = [
         identification, first_name, last_name, email, phone, 
-        address, gender, birth_date || null, username, is_active ? 1 : 0, photo || null, pin || null
+        address, gender, birth_date, username, is_active ? 1 : 0, photo || null
     ];
 
     if (password !== undefined && password !== null && password !== '') {
