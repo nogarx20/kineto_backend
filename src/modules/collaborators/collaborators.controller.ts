@@ -170,38 +170,13 @@ export class CollaboratorController {
       const { id } = (req as any).params;
       const user = (req as any).user;
 
-      // Obtener datos del contrato para el check de integridad
-      const [conRows]: any = await pool.execute('SELECT * FROM contracts WHERE id = ? AND company_id = ?', [id, user.company_id]);
-      if (conRows.length === 0) throw new Error('Contrato no encontrado');
-      const contract = conRows[0];
-      const collabId = contract.collaborator_id;
-
-      // Validar si el colaborador tiene registros vinculados que impidan borrar este contrato
-      const checks = [
-        { table: 'attendance_records', label: 'Marcajes de Asistencia', query: 'SELECT COUNT(*) as count FROM attendance_records WHERE collaborator_id = ?' },
-        { table: 'novelties', label: 'Novedades Registradas', query: 'SELECT COUNT(*) as count FROM novelties WHERE collaborator_id = ?' },
-        { table: 'schedules', label: 'Programación de Turnos', query: 'SELECT COUNT(*) as count FROM schedules WHERE collaborator_id = ?' }
-      ];
-
-      const activeReferences = [];
-      for (const check of checks) {
-        const [result]: any = await pool.execute(check.query, [collabId]);
-        if (result[0].count > 0) {
-          activeReferences.push(`${check.label} (${result[0].count} registros)`);
-        }
-      }
-
-      if (activeReferences.length > 0) {
-        return (res as any).status(400).json({ 
-          error: 'Restricción de Integridad',
-          message: `Acción denegada: El contrato ${contract.contract_code} no puede eliminarse porque el colaborador asociado posee registros operativos activos en el sistema:\n\n` + 
-                   activeReferences.map(ref => `• ${ref}`).join('\n') + 
-                   `\n\nDebe anular o trasladar estos registros antes de proceder con la eliminación del contrato para preservar la coherencia de la base de datos.`
-        });
-      }
+      const [con]: any = await pool.execute('SELECT contract_code FROM contracts WHERE id = ?', [id]);
+      if (con.length === 0) throw new Error('Contrato no encontrado');
 
       await (service as any).repository.deleteContract(id, user.company_id);
-      await logAudit(req, 'DELETE', 'contracts', id, { contract_code: contract.contract_code });
+      
+      await logAudit(req, 'DELETE', 'contracts', id, { contract_code: con[0].contract_code });
+      
       (res as any).json({ success: true });
     } catch (err: any) {
       (res as any).status(400).json({ error: err.message });
@@ -212,7 +187,13 @@ export class CollaboratorController {
   async listPositions(req: Request, res: Response) {
     try {
       const user = (req as any).user;
-      const data = await service.getPositions(user.company_id);
+      const [data]: any = await pool.execute(`
+        SELECT p.*, 
+        (SELECT COUNT(*) FROM contracts WHERE position_name = p.name AND company_id = p.company_id AND status = 'Activo') as active_count,
+        (SELECT COUNT(*) FROM contracts WHERE position_name = p.name AND company_id = p.company_id AND status != 'Activo') as inactive_count
+        FROM positions p 
+        WHERE p.company_id = ?
+      `, [user.company_id]);
       await logAudit(req, 'LIST', 'positions');
       (res as any).json(data);
     } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
@@ -243,8 +224,29 @@ export class CollaboratorController {
     try {
       const { id } = (req as any).params;
       const user = (req as any).user;
+
+      // Obtener nombre del cargo para validar en contratos
+      const [posRows]: any = await pool.execute('SELECT name FROM positions WHERE id = ? AND company_id = ?', [id, user.company_id]);
+      if (posRows.length === 0) throw new Error('Cargo no encontrado');
+      const positionName = posRows[0].name;
+
+      // Validar si algún contrato usa este cargo
+      const [contractUsage]: any = await pool.execute(
+        'SELECT COUNT(*) as count FROM contracts WHERE position_name = ? AND company_id = ?',
+        [positionName, user.company_id]
+      );
+
+      if (contractUsage[0].count > 0) {
+        return (res as any).status(400).json({ 
+          error: 'Restricción de Integridad',
+          message: `Acción denegada: El cargo "${positionName}" posee dependencias vinculadas que impiden su eliminación.\n\n` + 
+                   `• Contratos vinculados: ${contractUsage[0].count} registros encontrados.\n\n` + 
+                   `Debe reasignar a los colaboradores de estos contratos a un nuevo cargo antes de proceder con el borrado definitivo.`
+        });
+      }
+
       await pool.execute('DELETE FROM positions WHERE id = ? AND company_id = ?', [id, user.company_id]);
-      await logAudit(req, 'DELETE', 'positions', id);
+      await logAudit(req, 'DELETE', 'positions', id, { deleted_name: positionName });
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
