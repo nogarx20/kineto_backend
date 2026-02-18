@@ -38,29 +38,29 @@ export class CollaboratorRepository {
   async create(data: any) {
     const { 
       id, company_id, identification, first_name, last_name, 
-      email, phone, address, gender, birth_date, username, password, photo 
+      email, phone, address, gender, birth_date, username, password, photo, pin 
     } = data;
     
     await pool.execute(`
       INSERT INTO collaborators 
-      (id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, photo)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, photo || null]);
+      (id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, photo, pin)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, photo || null, pin || null]);
     
     return id;
   }
 
   async update(id: string, companyId: string, data: any) {
-    const { identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, is_active, photo } = data;
+    const { identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, is_active, photo, pin } = data;
     
     const updates = [
         'identification = ?', 'first_name = ?', 'last_name = ?', 'email = ?', 
         'phone = ?', 'address = ?', 'gender = ?', 'birth_date = ?', 
-        'username = ?', 'is_active = ?', 'photo = ?'
+        'username = ?', 'is_active = ?', 'photo = ?', 'pin = ?'
     ];
     const params: any[] = [
         identification, first_name, last_name, email, phone, 
-        address, gender, birth_date, username, is_active ? 1 : 0, photo || null
+        address, gender, birth_date, username, is_active ? 1 : 0, photo || null, pin || null
     ];
 
     if (password !== undefined && password !== null && password !== '') {
