@@ -1,4 +1,3 @@
-
 import { Request, Response } from 'express';
 import { CollaboratorService } from './collaborators.service';
 import { logAudit } from '../../middlewares/audit.middleware';
@@ -171,13 +170,38 @@ export class CollaboratorController {
       const { id } = (req as any).params;
       const user = (req as any).user;
 
-      const [con]: any = await pool.execute('SELECT contract_code FROM contracts WHERE id = ?', [id]);
-      if (con.length === 0) throw new Error('Contrato no encontrado');
+      // Obtener datos del contrato para el check
+      const [conRows]: any = await pool.execute('SELECT * FROM contracts WHERE id = ? AND company_id = ?', [id, user.company_id]);
+      if (conRows.length === 0) throw new Error('Contrato no encontrado');
+      const contract = conRows[0];
+      const collabId = contract.collaborator_id;
+
+      // Validar si el colaborador tiene registros vinculados que impidan borrar su contrato actual
+      const checks = [
+        { table: 'attendance_records', label: 'Marcajes de Asistencia', query: 'SELECT COUNT(*) as count FROM attendance_records WHERE collaborator_id = ?' },
+        { table: 'novelties', label: 'Novedades Registradas', query: 'SELECT COUNT(*) as count FROM novelties WHERE collaborator_id = ?' },
+        { table: 'schedules', label: 'Programación de Turnos', query: 'SELECT COUNT(*) as count FROM schedules WHERE collaborator_id = ?' }
+      ];
+
+      const activeReferences = [];
+      for (const check of checks) {
+        const [result]: any = await pool.execute(check.query, [collabId]);
+        if (result[0].count > 0) {
+          activeReferences.push(`${check.label} (${result[0].count} registros)`);
+        }
+      }
+
+      if (activeReferences.length > 0) {
+        return (res as any).status(400).json({ 
+          error: 'Restricción de Integridad',
+          message: `Acción denegada: El contrato ${contract.contract_code} no puede eliminarse porque el colaborador asociado posee registros operativos activos en el sistema:\n\n` + 
+                   activeReferences.map(ref => `• ${ref}`).join('\n') + 
+                   `\n\nDebe anular o trasladar estos registros antes de proceder con la eliminación del contrato para preservar la coherencia de la base de datos.`
+        });
+      }
 
       await (service as any).repository.deleteContract(id, user.company_id);
-      
-      await logAudit(req, 'DELETE', 'contracts', id, { contract_code: con[0].contract_code });
-      
+      await logAudit(req, 'DELETE', 'contracts', id, { contract_code: contract.contract_code });
       (res as any).json({ success: true });
     } catch (err: any) {
       (res as any).status(400).json({ error: err.message });
