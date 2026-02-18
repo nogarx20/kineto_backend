@@ -82,7 +82,7 @@ export class CollaboratorController {
       if (activeReferences.length > 0) {
         return (res as any).status(400).json({ 
           error: 'Restricción de Integridad',
-          message: `Restricción de sistema: El colaborador posee dependencias y registros vinculados que impiden su eliminación:\n\n` + 
+          message: `Acción denegada: El colaborador posee registros vinculados que impiden su eliminación directa:\n\n` + 
                    activeReferences.map(ref => `• ${ref}`).join('\n') + 
                    `\n\nDebe eliminar estas dependencias antes de proceder con el borrado definitivo.`
         });
@@ -170,13 +170,13 @@ export class CollaboratorController {
       const { id } = (req as any).params;
       const user = (req as any).user;
 
-      // Obtener datos del contrato para el check
+      // Obtener datos del contrato para el check de integridad
       const [conRows]: any = await pool.execute('SELECT * FROM contracts WHERE id = ? AND company_id = ?', [id, user.company_id]);
       if (conRows.length === 0) throw new Error('Contrato no encontrado');
       const contract = conRows[0];
       const collabId = contract.collaborator_id;
 
-      // Validar si el colaborador tiene registros vinculados que impidan borrar su contrato actual
+      // Validar si el colaborador tiene registros vinculados que impidan borrar este contrato
       const checks = [
         { table: 'attendance_records', label: 'Marcajes de Asistencia', query: 'SELECT COUNT(*) as count FROM attendance_records WHERE collaborator_id = ?' },
         { table: 'novelties', label: 'Novedades Registradas', query: 'SELECT COUNT(*) as count FROM novelties WHERE collaborator_id = ?' },
@@ -194,9 +194,9 @@ export class CollaboratorController {
       if (activeReferences.length > 0) {
         return (res as any).status(400).json({ 
           error: 'Restricción de Integridad',
-          message: `Restricción de sistema: El contrato ${contract.contract_code} no puede eliminarse porque existen dependencias y registros vinculados para este colaborador:\n\n` + 
+          message: `Acción denegada: El contrato ${contract.contract_code} no puede eliminarse porque el colaborador asociado posee registros operativos activos en el sistema:\n\n` + 
                    activeReferences.map(ref => `• ${ref}`).join('\n') + 
-                   `\n\nDebe anular o trasladar estos registros antes de proceder con la eliminación del contrato.`
+                   `\n\nDebe anular o trasladar estos registros antes de proceder con la eliminación del contrato para preservar la coherencia de la base de datos.`
         });
       }
 
