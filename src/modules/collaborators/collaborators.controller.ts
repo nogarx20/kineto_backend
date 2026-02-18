@@ -82,7 +82,7 @@ export class CollaboratorController {
       if (activeReferences.length > 0) {
         return (res as any).status(400).json({ 
           error: 'Restricción de Integridad',
-          message: `Acción denegada: El colaborador posee registros vinculados que impiden su eliminación directa:\n\n` + 
+          message: `Restricción de sistema: El colaborador posee dependencias y registros vinculados que impiden su eliminación:\n\n` + 
                    activeReferences.map(ref => `• ${ref}`).join('\n') + 
                    `\n\nDebe eliminar estas dependencias antes de proceder con el borrado definitivo.`
         });
@@ -194,9 +194,9 @@ export class CollaboratorController {
       if (activeReferences.length > 0) {
         return (res as any).status(400).json({ 
           error: 'Restricción de Integridad',
-          message: `Acción denegada: El contrato ${contract.contract_code} no puede eliminarse porque el colaborador asociado posee registros operativos activos en el sistema:\n\n` + 
+          message: `Restricción de sistema: El contrato ${contract.contract_code} no puede eliminarse porque existen dependencias y registros vinculados para este colaborador:\n\n` + 
                    activeReferences.map(ref => `• ${ref}`).join('\n') + 
-                   `\n\nDebe anular o trasladar estos registros antes de proceder con la eliminación del contrato para preservar la coherencia de la base de datos.`
+                   `\n\nDebe anular o trasladar estos registros antes de proceder con la eliminación del contrato.`
         });
       }
 
