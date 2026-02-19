@@ -1,4 +1,3 @@
-
 import pool from '../../config/database';
 
 export class SchedulingRepository {
@@ -22,7 +21,7 @@ export class SchedulingRepository {
       JOIN shifts sh ON s.shift_id = sh.id
       JOIN collaborators c ON s.collaborator_id = c.id
       LEFT JOIN cost_centers cc ON s.cost_center_id = cc.id
-      WHERE s.company_id = ? AND s.date BETWEEN ? AND ?
+      WHERE s.company_id = ? AND s.date BETWEEN ? AND ? AND s.onDelete = 0
     `, [companyId, startDate, endDate]);
     return rows;
   }
@@ -31,17 +30,18 @@ export class SchedulingRepository {
     const { id, company_id, collaborator_id, shift_id, cost_center_id, date } = data;
     
     await pool.execute(`
-      INSERT INTO schedules (id, company_id, collaborator_id, shift_id, cost_center_id, date)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO schedules (id, company_id, collaborator_id, shift_id, cost_center_id, date, onDelete)
+      VALUES (?, ?, ?, ?, ?, ?, 0)
       ON DUPLICATE KEY UPDATE 
         shift_id = VALUES(shift_id),
-        cost_center_id = VALUES(cost_center_id)
+        cost_center_id = VALUES(cost_center_id),
+        onDelete = 0
     `, [id, company_id, collaborator_id, shift_id, cost_center_id || null, date]);
     
     return id;
   }
 
   async delete(companyId: string, id: string) {
-    await pool.execute('DELETE FROM schedules WHERE id = ? AND company_id = ?', [id, companyId]);
+    await pool.execute('UPDATE schedules SET onDelete = 1 WHERE id = ? AND company_id = ?', [id, companyId]);
   }
 }
