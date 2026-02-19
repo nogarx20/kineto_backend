@@ -92,7 +92,8 @@ export class ShiftController {
       }
 
       const [old]: any = await pool.execute('SELECT * FROM marking_zones WHERE id = ?', [id]);
-      await pool.execute('DELETE FROM marking_zones WHERE id = ? AND company_id = ?', [id, user.company_id]);
+      // Borrado lógico
+      await pool.execute('UPDATE marking_zones SET is_deleted = 1 WHERE id = ? AND company_id = ?', [id, user.company_id]);
       await logAudit(req, 'DELETE', 'marking_zones', id, { deleted_record: old[0] });
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
