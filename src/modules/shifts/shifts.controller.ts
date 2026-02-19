@@ -65,11 +65,12 @@ export class ShiftController {
       const { id } = (req as any).params;
       const user = (req as any).user;
 
-      // RESTRICCIÓN: Verificar referencias en turnos
-      const [shiftUsage]: any = await pool.execute(
-        'SELECT COUNT(*) as count FROM shifts WHERE marking_zone_id = ? AND company_id = ?',
-        [id, user.company_id]
-      );
+      // RESTRICCIÓN: Verificar referencias en turnos (Columna simple y Columna JSON)
+      const [shiftUsage]: any = await pool.execute(`
+        SELECT COUNT(*) as count FROM shifts 
+        WHERE (marking_zone_id = ? OR (JSON_VALID(marking_zones_json) AND JSON_CONTAINS(marking_zones_json, JSON_QUOTE(?))))
+        AND company_id = ?
+      `, [id, id, user.company_id]);
 
       // RESTRICCIÓN: Verificar referencias en marcajes de asistencia
       const [attendanceUsage]: any = await pool.execute(
