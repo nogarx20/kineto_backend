@@ -1,10 +1,9 @@
-
 import pool from '../../config/database';
 
 export class RoleRepository {
   async findAll(companyId: string) {
     const [rows]: any = await pool.execute(
-      'SELECT * FROM roles WHERE company_id = ?',
+      'SELECT * FROM roles WHERE company_id = ? AND onDelete = 0',
       [companyId]
     );
     return rows;
@@ -13,7 +12,7 @@ export class RoleRepository {
   async create(role: any) {
     const { id, company_id, name } = role;
     await pool.execute(
-      'INSERT INTO roles (id, company_id, name) VALUES (?, ?, ?)',
+      'INSERT INTO roles (id, company_id, name, onDelete) VALUES (?, ?, ?, 0)',
       [id, company_id, name]
     );
     return id;
@@ -35,5 +34,9 @@ export class RoleRepository {
       'INSERT IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)',
       [userId, roleId]
     );
+  }
+
+  async softDelete(id: string, companyId: string) {
+    await pool.execute('UPDATE roles SET onDelete = 1 WHERE id = ? AND company_id = ?', [id, companyId]);
   }
 }
