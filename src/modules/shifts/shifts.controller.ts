@@ -25,7 +25,7 @@ export class ShiftController {
     try {
       const user = (req as any).user;
       const body = (req as any).body;
-      const id = await service.createZone(user.company_id, body);
+      const id = await service.createZone(user.company_id, { ...body, is_active: true });
       await logAudit(req, 'CREATE', 'marking_zones', id, body);
       (res as any).status(201).json({ id });
     } catch (err: any) {
@@ -42,15 +42,16 @@ export class ShiftController {
       const oldData = oldRows[0];
       
       await pool.execute(
-        'UPDATE marking_zones SET name = ?, lat = ?, lng = ?, radius = ?, zone_type = ?, bounds = ? WHERE id = ? AND company_id = ?',
-        [body.name, body.lat, body.lng, body.radius, body.zone_type || 'circle', body.bounds ? JSON.stringify(body.bounds) : null, id, user.company_id]
+        'UPDATE marking_zones SET name = ?, lat = ?, lng = ?, radius = ?, zone_type = ?, bounds = ?, is_active = ? WHERE id = ? AND company_id = ?',
+        [body.name, body.lat, body.lng, body.radius, body.zone_type || 'circle', body.bounds ? JSON.stringify(body.bounds) : null, body.is_active === undefined ? oldData.is_active : (body.is_active ? 1 : 0), id, user.company_id]
       );
 
       const changes: any = {};
-      const fields = ['name', 'lat', 'lng', 'radius', 'zone_type'];
+      const fields = ['name', 'lat', 'lng', 'radius', 'zone_type', 'is_active'];
       fields.forEach(f => {
-        if (oldData && oldData[f] != body[f]) {
-          changes[f] = { from: oldData[f], to: body[f] };
+        const newVal = f === 'is_active' ? (body[f] ? 1 : 0) : body[f];
+        if (oldData && oldData[f] != newVal) {
+          changes[f] = { from: oldData[f], to: newVal };
         }
       });
 
@@ -63,6 +64,32 @@ export class ShiftController {
     try {
       const { id } = (req as any).params;
       const user = (req as any).user;
+
+      // RESTRICCIÓN: Verificar referencias en turnos
+      const [shiftUsage]: any = await pool.execute(
+        'SELECT COUNT(*) as count FROM shifts WHERE marking_zone_id = ? AND company_id = ?',
+        [id, user.company_id]
+      );
+
+      // RESTRICCIÓN: Verificar referencias en marcajes de asistencia
+      const [attendanceUsage]: any = await pool.execute(
+        'SELECT COUNT(*) as count FROM attendance_records WHERE marking_zone_id = ? AND company_id = ?',
+        [id, user.company_id]
+      );
+
+      const activeReferences = [];
+      if (shiftUsage[0].count > 0) activeReferences.push(`Turnos operativos (${shiftUsage[0].count} registros)`);
+      if (attendanceUsage[0].count > 0) activeReferences.push(`Historial de Marcajes (${attendanceUsage[0].count} registros)`);
+
+      if (activeReferences.length > 0) {
+        return (res as any).status(400).json({ 
+          error: 'Restricción de Integridad',
+          message: `No es posible eliminar esta geocerca porque el sistema detectó dependencias activas:\n\n` + 
+                   activeReferences.map(ref => `• ${ref}`).join('\n') + 
+                   `\n\nLe recomendamos marcar la zona como "Inactiva" para suspender su uso sin afectar los datos históricos registrados.`
+        });
+      }
+
       const [old]: any = await pool.execute('SELECT * FROM marking_zones WHERE id = ?', [id]);
       await pool.execute('DELETE FROM marking_zones WHERE id = ? AND company_id = ?', [id, user.company_id]);
       await logAudit(req, 'DELETE', 'marking_zones', id, { deleted_record: old[0] });
