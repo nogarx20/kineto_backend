@@ -3,27 +3,32 @@ import pool from '../../config/database';
 export class NoveltyRepository {
   // --- Tipos de Novedades ---
   async findAllTypes(companyId: string) {
-    const [rows]: any = await pool.execute(
-      'SELECT * FROM novelty_types WHERE company_id = ? AND onDelete = 0 ORDER BY createdAt DESC',
-      [companyId]
-    );
+    const [rows]: any = await pool.execute(`
+      SELECT nt.*, 
+      (SELECT COUNT(*) FROM novelties n WHERE n.novelty_type_id = nt.id AND n.onDelete = 0) as request_count,
+      (SELECT COUNT(*) FROM novelties n WHERE n.novelty_type_id = nt.id AND n.onDelete = 0 
+       AND CURDATE() BETWEEN DATE(n.start_date) AND DATE(n.end_date)) as active_request_count
+      FROM novelty_types nt 
+      WHERE nt.company_id = ? AND nt.onDelete = 0 
+      ORDER BY nt.name ASC
+    `, [companyId]);
     return rows;
   }
 
   async createType(data: any) {
-    const { id, company_id, name, prefix, period, type, generates_man_hours } = data;
+    const { id, company_id, name, prefix, period, type, generates_man_hours, is_active } = data;
     await pool.execute(
-      'INSERT INTO novelty_types (id, company_id, name, prefix, period, type, generates_man_hours, onDelete) VALUES (?, ?, ?, ?, ?, ?, ?, 0)',
-      [id, company_id, name, prefix, period, type, generates_man_hours ? 1 : 0]
+      'INSERT INTO novelty_types (id, company_id, name, prefix, period, type, generates_man_hours, is_active, onDelete) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)',
+      [id, company_id, name, prefix, period, type, generates_man_hours ? 1 : 0, is_active === undefined ? 1 : (is_active ? 1 : 0)]
     );
     return id;
   }
 
   async updateType(id: string, companyId: string, data: any) {
-    const { name, prefix, period, type, generates_man_hours } = data;
+    const { name, prefix, period, type, generates_man_hours, is_active } = data;
     await pool.execute(
-      'UPDATE novelty_types SET name = ?, prefix = ?, period = ?, type = ?, generates_man_hours = ? WHERE id = ? AND company_id = ?',
-      [name, prefix, period, type, generates_man_hours ? 1 : 0, id, companyId]
+      'UPDATE novelty_types SET name = ?, prefix = ?, period = ?, type = ?, generates_man_hours = ?, is_active = ? WHERE id = ? AND company_id = ?',
+      [name, prefix, period, type, generates_man_hours ? 1 : 0, is_active ? 1 : 0, id, companyId]
     );
   }
 
