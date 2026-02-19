@@ -1,4 +1,3 @@
-
 import { Request, Response } from 'express';
 import { NoveltyService } from './novelties.service';
 import { logAudit } from '../../middlewares/audit.middleware';
@@ -48,9 +47,9 @@ export class NoveltyController {
       const { id } = (req as any).params;
       const user = (req as any).user;
 
-      // RESTRICCIÓN: Verificar si el tipo de novedad tiene solicitudes vinculadas
+      // RESTRICCIÓN: Verificar si el tipo de novedad tiene solicitudes vinculadas no eliminadas
       const [usage]: any = await pool.execute(
-        'SELECT COUNT(*) as count FROM novelties WHERE novelty_type_id = ? AND company_id = ?',
+        'SELECT COUNT(*) as count FROM novelties WHERE novelty_type_id = ? AND company_id = ? AND onDelete = 0',
         [id, user.company_id]
       );
 
@@ -61,6 +60,7 @@ export class NoveltyController {
         });
       }
 
+      // Borrado lógico con onDelete
       await (service as any).repository.deleteType(id, user.company_id);
       await logAudit(req, 'DELETE_NOVELTY_TYPE', 'novelty_types', id);
       (res as any).json({ success: true });
@@ -131,6 +131,7 @@ export class NoveltyController {
       const { id } = (req as any).params;
       const user = (req as any).user;
       const [old]: any = await pool.execute('SELECT * FROM novelties WHERE id = ?', [id]);
+      // Borrado lógico con onDelete
       await (service as any).repository.delete(id, user.company_id);
       await logAudit(req, 'DELETE_NOVELTY', 'novelties', id, { deleted_record: old[0] });
       (res as any).json({ success: true });
