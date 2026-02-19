@@ -21,7 +21,7 @@ export class NoveltyController {
     try {
       const user = (req as any).user;
       const body = (req as any).body;
-      const id = await service.createNoveltyType(user.company_id, body);
+      const id = await service.createNoveltyType(user.company_id, { ...body, is_active: true });
       await logAudit(req, 'CREATE_NOVELTY_TYPE', 'novelty_types', id, body);
       (res as any).status(201).json({ id });
     } catch (err: any) {
@@ -34,6 +34,26 @@ export class NoveltyController {
       const { id } = (req as any).params;
       const user = (req as any).user;
       const body = (req as any).body;
+      
+      const [current]: any = await pool.execute('SELECT * FROM novelty_types WHERE id = ?', [id]);
+      if (!current.length) throw new Error('Tipo no encontrado');
+
+      // RESTRICCIÓN: Impedir inactivación si hay solicitudes ACTIVAS hoy
+      if (current[0].is_active == 1 && (body.is_active === false || body.is_active === 0)) {
+        const [activeReqs]: any = await pool.execute(`
+          SELECT COUNT(*) as count FROM novelties 
+          WHERE novelty_type_id = ? AND onDelete = 0 
+          AND CURDATE() BETWEEN DATE(start_date) AND DATE(end_date)
+        `, [id]);
+        
+        if (activeReqs[0].count > 0) {
+          return (res as any).status(400).json({
+            error: 'Restricción Operativa',
+            message: `No es posible inactivar el tipo "${current[0].name}" porque existen ${activeReqs[0].count} solicitud(es) activas en este momento. Debe esperar a que estas finalicen o anularlas antes de suspender esta categoría.`
+          });
+        }
+      }
+
       await (service as any).repository.updateType(id, user.company_id, body);
       await logAudit(req, 'UPDATE_NOVELTY_TYPE', 'novelty_types', id, body);
       (res as any).json({ success: true });
@@ -56,7 +76,7 @@ export class NoveltyController {
       if (usage[0].count > 0) {
         return (res as any).status(400).json({ 
           error: 'Restricción de Integridad',
-          message: `No es posible eliminar este tipo de novedad porque posee ${usage[0].count} solicitudes registradas. Debe eliminar las solicitudes asociadas antes de proceder.`
+          message: `No es posible eliminar este tipo de novedad porque posee ${usage[0].count} solicitud(es) registradas en el historial. Por seguridad de la información, le recomendamos marcar el tipo como "Inactivo" en lugar de borrarlo.`
         });
       }
 
