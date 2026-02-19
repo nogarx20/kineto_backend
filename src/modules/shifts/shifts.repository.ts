@@ -29,7 +29,8 @@ export class ShiftRepository {
       SELECT 
         s.*, 
         z.name as zone_name,
-        (SELECT COUNT(*) FROM schedules sch WHERE sch.shift_id = s.id AND sch.onDelete = 0) as schedule_count
+        (SELECT COUNT(*) FROM schedules sch WHERE sch.shift_id = s.id AND sch.onDelete = 0) as schedule_count,
+        (SELECT COUNT(*) FROM schedules sch WHERE sch.shift_id = s.id AND sch.onDelete = 0 AND sch.date >= CURDATE()) as active_schedule_count
       FROM shifts s
       LEFT JOIN marking_zones z ON s.marking_zone_id = z.id
       WHERE s.company_id = ? AND s.onDelete = 0
@@ -38,8 +39,7 @@ export class ShiftRepository {
   }
 
   async createShift(data: any) {
-    const { 
-      id, company_id, name, prefix, shift_type,
+    const { id, company_id, name, prefix, shift_type,
       start_time, end_time, start_time_2, end_time_2,
       entry_start_buffer, entry_end_buffer, exit_start_buffer, exit_end_buffer,
       entry_start_buffer_2, entry_end_buffer_2, exit_start_buffer_2, exit_end_buffer_2,
