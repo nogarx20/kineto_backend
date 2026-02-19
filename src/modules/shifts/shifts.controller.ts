@@ -69,7 +69,7 @@ export class ShiftController {
       const [shiftUsage]: any = await pool.execute(`
         SELECT COUNT(*) as count FROM shifts 
         WHERE (marking_zone_id = ? OR (JSON_VALID(marking_zones_json) AND JSON_CONTAINS(marking_zones_json, JSON_QUOTE(?))))
-        AND company_id = ?
+        AND company_id = ? AND onDelete = 0
       `, [id, id, user.company_id]);
 
       // RESTRICCIÓN: Verificar referencias en marcajes de asistencia
@@ -92,8 +92,8 @@ export class ShiftController {
       }
 
       const [old]: any = await pool.execute('SELECT * FROM marking_zones WHERE id = ?', [id]);
-      // Borrado lógico
-      await pool.execute('UPDATE marking_zones SET is_deleted = 1 WHERE id = ? AND company_id = ?', [id, user.company_id]);
+      // Borrado lógico con onDelete
+      await pool.execute('UPDATE marking_zones SET onDelete = 1 WHERE id = ? AND company_id = ?', [id, user.company_id]);
       await logAudit(req, 'DELETE', 'marking_zones', id, { deleted_record: old[0] });
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
@@ -138,7 +138,7 @@ export class ShiftController {
       // RESTRICCIÓN: Impedir inactivación si hay programaciones activas (Hoy o Futuro)
       if (body.is_active === false && oldData.is_active == 1) {
         const [activeScheds]: any = await pool.execute(
-          'SELECT COUNT(*) as count FROM schedules WHERE shift_id = ? AND date >= CURDATE() AND company_id = ?',
+          'SELECT COUNT(*) as count FROM schedules WHERE shift_id = ? AND date >= CURDATE() AND company_id = ? AND onDelete = 0',
           [id, user.company_id]
         );
         if (activeScheds[0].count > 0) {
@@ -190,7 +190,7 @@ export class ShiftController {
 
       // RESTRICCIÓN: Verificar si el turno está asignado en la programación
       const [usage]: any = await pool.execute(
-        'SELECT COUNT(*) as count FROM schedules WHERE shift_id = ? AND company_id = ?',
+        'SELECT COUNT(*) as count FROM schedules WHERE shift_id = ? AND company_id = ? AND onDelete = 0',
         [id, user.company_id]
       );
 
@@ -202,7 +202,8 @@ export class ShiftController {
       }
 
       const [old]: any = await pool.execute('SELECT * FROM shifts WHERE id = ?', [id]);
-      await pool.execute('DELETE FROM shifts WHERE id = ? AND company_id = ?', [id, user.company_id]);
+      // Borrado lógico con onDelete
+      await pool.execute('UPDATE shifts SET onDelete = 1 WHERE id = ? AND company_id = ?', [id, user.company_id]);
       await logAudit(req, 'DELETE', 'shifts', id, { deleted_record: old[0] });
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
