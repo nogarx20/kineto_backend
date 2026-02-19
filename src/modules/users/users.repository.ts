@@ -1,10 +1,9 @@
-
 import pool from '../../config/database';
 
 export class UserRepository {
   async findByEmail(companyId: string, email: string) {
     const [rows]: any = await pool.execute(
-      'SELECT * FROM users WHERE company_id = ? AND email = ?',
+      'SELECT * FROM users WHERE company_id = ? AND email = ? AND onDelete = 0',
       [companyId, email]
     );
     return rows[0];
@@ -15,7 +14,7 @@ export class UserRepository {
       `SELECT u.*, c.name as company_name 
        FROM users u 
        JOIN companies c ON u.company_id = c.id 
-       WHERE u.email = ?`,
+       WHERE u.email = ? AND u.onDelete = 0 AND c.onDelete = 0`,
       [email]
     );
     return rows;
@@ -23,7 +22,7 @@ export class UserRepository {
 
   async findById(companyId: string, id: string) {
     const [rows]: any = await pool.execute(
-      'SELECT id, company_id, email, first_name, last_name, is_active, is_locked, failed_attempts, createdAt FROM users WHERE company_id = ? AND id = ?',
+      'SELECT id, company_id, email, first_name, last_name, is_active, is_locked, failed_attempts, createdAt FROM users WHERE company_id = ? AND id = ? AND onDelete = 0',
       [companyId, id]
     );
     return rows[0];
@@ -32,7 +31,7 @@ export class UserRepository {
   async create(user: any) {
     const { id, company_id, email, password, first_name, last_name } = user;
     await pool.execute(
-      'INSERT INTO users (id, company_id, email, password, first_name, last_name) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO users (id, company_id, email, password, first_name, last_name, onDelete) VALUES (?, ?, ?, ?, ?, ?, 0)',
       [id, company_id, email, password, first_name, last_name]
     );
     return id;
@@ -40,7 +39,7 @@ export class UserRepository {
 
   async listByCompany(companyId: string) {
     const [rows]: any = await pool.execute(
-      'SELECT id, email, first_name, last_name, is_active, is_locked, failed_attempts, createdAt FROM users WHERE company_id = ?',
+      'SELECT id, email, first_name, last_name, is_active, is_locked, failed_attempts, createdAt FROM users WHERE company_id = ? AND onDelete = 0',
       [companyId]
     );
     return rows;
@@ -69,9 +68,13 @@ export class UserRepository {
 
   async findGlobalByEmail(email: string) {
     const [rows]: any = await pool.execute(
-        'SELECT * FROM users WHERE email = ? LIMIT 1',
+        'SELECT * FROM users WHERE email = ? AND onDelete = 0 LIMIT 1',
         [email]
     );
     return rows[0];
+  }
+
+  async softDelete(id: string, companyId: string) {
+    await pool.execute('UPDATE users SET onDelete = 1 WHERE id = ? AND company_id = ?', [id, companyId]);
   }
 }
