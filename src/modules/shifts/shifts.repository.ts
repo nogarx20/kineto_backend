@@ -9,7 +9,7 @@ export class ShiftRepository {
       (SELECT COUNT(*) FROM shifts s WHERE s.marking_zone_id = mz.id OR (JSON_VALID(s.marking_zones_json) AND JSON_CONTAINS(s.marking_zones_json, JSON_QUOTE(CAST(mz.id AS CHAR))))) as shift_links,
       (SELECT COUNT(*) FROM attendance_records ar WHERE ar.marking_zone_id = mz.id) as attendance_links
       FROM marking_zones mz 
-      WHERE mz.company_id = ?
+      WHERE mz.company_id = ? AND mz.is_deleted = 0
     `, [companyId]);
     return rows;
   }
@@ -17,7 +17,7 @@ export class ShiftRepository {
   async createZone(data: any) {
     const { id, company_id, name, lat, lng, radius, zone_type, bounds, is_active } = data;
     await pool.execute(
-      'INSERT INTO marking_zones (id, company_id, name, lat, lng, radius, zone_type, bounds, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO marking_zones (id, company_id, name, lat, lng, radius, zone_type, bounds, is_active, is_deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
       [id, company_id, name, lat, lng, radius, zone_type || 'circle', bounds ? JSON.stringify(bounds) : null, is_active === undefined ? 1 : (is_active ? 1 : 0)]
     );
     return id;
