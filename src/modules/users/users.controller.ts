@@ -1,10 +1,11 @@
-
 import { Request, Response } from 'express';
 import { UserService } from './users.service';
 import { logAudit } from '../../middlewares/audit.middleware';
 import pool from '../../config/database';
+import { UserRepository } from './users.repository';
 
 const userService = new UserService();
+const repo = new UserRepository();
 
 export class UserController {
   async login(req: Request, res: Response) {
@@ -122,8 +123,8 @@ export class UserController {
         });
       }
 
-      // Si pasa los checks, se procede al borrado lógico/físico según política (aquí físico si no hay logs)
-      await pool.execute('DELETE FROM users WHERE id = ? AND company_id = ?', [id, adminUser.company_id]);
+      // Borrado lógico con onDelete
+      await repo.softDelete(id, adminUser.company_id);
       
       await logAudit(req, 'DELETE', 'users', id, { deleted_record: targetUser });
       (res as any).json({ success: true });
@@ -147,7 +148,6 @@ export class UserController {
         details: typeof r.details === 'string' ? JSON.parse(r.details) : r.details
       }));
 
-      await logAudit(req, 'GET_USER_LOGS', 'users', id);
       (res as any).json(parsedRows);
     } catch (err: any) {
       (res as any).status(500).json({ error: err.message });
@@ -161,7 +161,7 @@ export class UserController {
 
       const [rows]: any = await pool.execute(`
         SELECT u.*, (SELECT GROUP_CONCAT(role_id) FROM user_roles WHERE user_id = u.id) as role_ids_str
-        FROM users u WHERE u.company_id = ?
+        FROM users u WHERE u.company_id = ? AND u.onDelete = 0
       `, [user.company_id]);
       
       const usersWithRoles = rows.map((u: any) => ({ ...u, role_ids: u.role_ids_str ? u.role_ids_str.split(',') : [] }));
@@ -182,7 +182,7 @@ export class UserController {
         FROM permissions p 
         ORDER BY p.module, p.name
       `, [id]);
-      await logAudit(req, 'GET_USER_DIRECT_PERMISSIONS', 'users', id);
+      
       (res as any).json(rows);
     } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
   }
@@ -205,7 +205,6 @@ export class UserController {
       `, [id, id]);
       
       const codes = rows.map((r: any) => r.code);
-      await logAudit(req, 'GET_EFFECTIVE_PERMISSIONS', 'users', id);
       (res as any).json(codes);
     } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
   }
