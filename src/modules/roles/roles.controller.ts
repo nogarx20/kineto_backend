@@ -1,4 +1,3 @@
-
 import { Request, Response } from 'express';
 import { RoleService } from './roles.service';
 import { logAudit } from '../../middlewares/audit.middleware';
@@ -16,8 +15,8 @@ export class RoleController {
       const [roles]: any = await pool.execute(`
         SELECT r.*, 
         (SELECT COUNT(*) FROM role_permissions rp WHERE rp.role_id = r.id) as perm_count,
-        (SELECT COUNT(*) FROM user_roles ur WHERE ur.role_id = r.id) as user_count
-        FROM roles r WHERE r.company_id = ?
+        (SELECT COUNT(*) FROM user_roles ur JOIN users u ON ur.user_id = u.id WHERE ur.role_id = r.id AND u.onDelete = 0) as user_count
+        FROM roles r WHERE r.company_id = ? AND r.onDelete = 0
       `, [user.company_id]);
 
       // Registrar evento de auditoría de consulta con filtro
@@ -33,7 +32,7 @@ export class RoleController {
       const user = (req as any).user;
       const id = generateUUID();
       
-      await pool.execute('INSERT INTO roles (id, company_id, name, description) VALUES (?, ?, ?, ?)', [
+      await pool.execute('INSERT INTO roles (id, company_id, name, description, onDelete) VALUES (?, ?, ?, ?, 0)', [
         id, user.company_id, body.name, body.description || null
       ]);
 
@@ -71,10 +70,10 @@ export class RoleController {
       const { id } = (req as any).params;
       const user = (req as any).user;
 
-      const [old]: any = await pool.execute('SELECT * FROM roles WHERE id = ? AND company_id = ?', [id, user.company_id]);
+      const [old]: any = await pool.execute('SELECT * FROM roles WHERE id = ? AND company_id = ? AND onDelete = 0', [id, user.company_id]);
       if (old.length === 0) throw new Error('Rol no encontrado');
 
-      const [users]: any = await pool.execute('SELECT COUNT(*) as count FROM user_roles WHERE role_id = ?', [id]);
+      const [users]: any = await pool.execute('SELECT COUNT(*) as count FROM user_roles ur JOIN users u ON ur.user_id = u.id WHERE ur.role_id = ? AND u.onDelete = 0', [id]);
       if (users[0].count > 0) {
         return (res as any).status(400).json({ 
           error: 'Restricción de Integridad',
@@ -82,7 +81,8 @@ export class RoleController {
         });
       }
 
-      await pool.execute('DELETE FROM roles WHERE id = ? AND company_id = ?', [id, user.company_id]);
+      // Borrado lógico con onDelete
+      await pool.execute('UPDATE roles SET onDelete = 1 WHERE id = ? AND company_id = ?', [id, user.company_id]);
       await logAudit(req, 'DELETE', 'roles', id, { deleted_role: old[0] });
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
@@ -95,7 +95,6 @@ export class RoleController {
         SELECT p.*, EXISTS(SELECT 1 FROM role_permissions rp WHERE rp.role_id = ? AND rp.permission_id = p.id) as assigned
         FROM permissions p ORDER BY p.module, p.name
       `, [id]);
-      await logAudit(req, 'GET_ROLE_PERMISSIONS', 'roles', id);
       (res as any).json(rows);
     } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
   }
@@ -123,10 +122,9 @@ export class RoleController {
         SELECT u.id, u.first_name, u.last_name, u.email,
         EXISTS(SELECT 1 FROM user_roles ur WHERE ur.role_id = ? AND ur.user_id = u.id) as assigned
         FROM users u 
-        WHERE u.company_id = ?
+        WHERE u.company_id = ? AND u.onDelete = 0
         ORDER BY u.first_name, u.last_name
       `, [id, user.company_id]);
-      await logAudit(req, 'GET_ROLE_USERS', 'roles', id);
       (res as any).json(rows);
     } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
   }
