@@ -1,4 +1,3 @@
-
 import { SchedulingRepository } from './scheduling.repository';
 import { generateUUID } from '../../utils/uuid';
 import pool from '../../config/database';
@@ -11,10 +10,10 @@ export class SchedulingService {
   }
 
   async assignShift(companyId: string, collaboratorId: string, shiftId: string, date: string, costCenterId?: string) {
-    // Validar contrato activo para la fecha de programación
+    // Validar contrato activo para la fecha de programación y no eliminado lógicamente
     const [contracts]: any = await pool.execute(`
       SELECT status, start_date, end_date FROM contracts 
-      WHERE collaborator_id = ? AND company_id = ? AND status = 'Activo'
+      WHERE collaborator_id = ? AND company_id = ? AND status = 'Activo' AND onDelete = 0
       AND ? >= start_date AND (? <= end_date OR end_date IS NULL)
     `, [collaboratorId, companyId, date, date]);
 
