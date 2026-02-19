@@ -103,7 +103,22 @@ export class ShiftController {
       const body = (req as any).body;
       const user = (req as any).user;
       const [oldRows]: any = await pool.execute('SELECT * FROM shifts WHERE id = ?', [id]);
+      if (oldRows.length === 0) throw new Error('Turno no encontrado');
       const oldData = oldRows[0];
+
+      // RESTRICCIÓN: Impedir inactivación si hay programaciones activas (Hoy o Futuro)
+      if (body.is_active === false && oldData.is_active == 1) {
+        const [activeScheds]: any = await pool.execute(
+          'SELECT COUNT(*) as count FROM schedules WHERE shift_id = ? AND date >= CURDATE() AND company_id = ?',
+          [id, user.company_id]
+        );
+        if (activeScheds[0].count > 0) {
+          return (res as any).status(400).json({
+            error: 'Restricción de Operación',
+            message: `No es posible inactivar el turno "${oldData.name}" porque posee ${activeScheds[0].count} asignaciones registradas para el periodo actual o futuro. Debe reasignar a estos colaboradores a otro turno antes de suspender la vigencia operativa de este horario.`
+          });
+        }
+      }
       
       await pool.execute(`
         UPDATE shifts 
@@ -111,20 +126,23 @@ export class ShiftController {
             start_time = ?, end_time = ?, start_time_2 = ?, end_time_2 = ?,
             entry_start_buffer = ?, entry_end_buffer = ?, exit_start_buffer = ?, exit_end_buffer = ?,
             entry_start_buffer_2 = ?, entry_end_buffer_2 = ?, exit_start_buffer_2 = ?, exit_end_buffer_2 = ?,
-            rounding = ?, lunch_start = ?, lunch_end = ?, marking_zone_id = ?
+            rounding = ?, lunch_start = ?, lunch_end = ?, marking_zone_id = ?, is_active = ?,
+            is_automatic_marking = ?, marking_zones_json = ?
         WHERE id = ? AND company_id = ?
       `, [
         body.name, body.prefix, body.shift_type || 'Simple',
         body.start_time, body.end_time, body.start_time_2 || null, body.end_time_2 || null,
         body.entry_start_buffer || 15, body.entry_end_buffer || 15, body.exit_start_buffer || 15, body.exit_end_buffer || 15,
-        // Fix: Added body. prefix to exit_start_buffer_2 and exit_end_buffer_2 to resolve "Cannot find name" errors.
         body.entry_start_buffer_2 || 15, body.entry_end_buffer_2 || 15, body.exit_start_buffer_2 || 15, body.exit_end_buffer_2 || 15,
         body.rounding || 0, body.lunch_start || null, body.lunch_end || null, body.marking_zone_id || null,
+        body.is_active === undefined ? oldData.is_active : (body.is_active ? 1 : 0),
+        body.is_automatic_marking ? 1 : 0,
+        body.marking_zones_json ? JSON.stringify(body.marking_zones_json) : null,
         id, user.company_id
       ]);
 
       const changes: any = {};
-      const fields = ['name', 'prefix', 'shift_type', 'start_time', 'end_time', 'marking_zone_id'];
+      const fields = ['name', 'prefix', 'shift_type', 'start_time', 'end_time', 'marking_zone_id', 'is_active', 'is_automatic_marking'];
       fields.forEach(f => {
         if (oldData && oldData[f] != body[f]) {
           changes[f] = { from: oldData[f], to: body[f] };
