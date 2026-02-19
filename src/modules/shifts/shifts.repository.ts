@@ -4,7 +4,12 @@ export class ShiftRepository {
   
   // --- Zones ---
   async findAllZones(companyId: string) {
-    const [rows]: any = await pool.execute('SELECT * FROM marking_zones WHERE company_id = ?', [companyId]);
+    const [rows]: any = await pool.execute(`
+      SELECT mz.*, 
+      (SELECT COUNT(*) FROM shifts s WHERE s.marking_zone_id = mz.id) as links_count
+      FROM marking_zones mz 
+      WHERE mz.company_id = ?
+    `, [companyId]);
     return rows;
   }
 
