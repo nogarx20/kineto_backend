@@ -42,7 +42,7 @@ export class CollaboratorController {
       // Validación de regla de negocio: No inactivar si existen contratos activos
       if (body.is_active === false || body.is_active === 0 || body.is_active === '0') {
         const [activeContracts]: any = await pool.execute(
-          'SELECT COUNT(*) as count FROM contracts WHERE collaborator_id = ? AND status = "Activo" AND company_id = ?',
+          'SELECT COUNT(*) as count FROM contracts WHERE collaborator_id = ? AND status = "Activo" AND company_id = ? AND onDelete = 0',
           [id, user.company_id]
         );
         if (activeContracts[0].count > 0) {
@@ -65,10 +65,10 @@ export class CollaboratorController {
       const user = (req as any).user;
 
       const checks = [
-        { table: 'contracts', label: 'Contratos Laborales', query: 'SELECT COUNT(*) as count FROM contracts WHERE collaborator_id = ?' },
-        { table: 'schedules', label: 'Programación de Turnos', query: 'SELECT COUNT(*) as count FROM schedules WHERE collaborator_id = ?' },
+        { table: 'contracts', label: 'Contratos Laborales', query: 'SELECT COUNT(*) as count FROM contracts WHERE collaborator_id = ? AND onDelete = 0' },
+        { table: 'schedules', label: 'Programación de Turnos', query: 'SELECT COUNT(*) as count FROM schedules WHERE collaborator_id = ? AND onDelete = 0' },
         { table: 'attendance_records', label: 'Marcajes de Asistencia', query: 'SELECT COUNT(*) as count FROM attendance_records WHERE collaborator_id = ?' },
-        { table: 'novelties', label: 'Novedades y Licencias', query: 'SELECT COUNT(*) as count FROM novelties WHERE collaborator_id = ?' }
+        { table: 'novelties', label: 'Novedades y Licencias', query: 'SELECT COUNT(*) as count FROM novelties WHERE collaborator_id = ? AND onDelete = 0' }
       ];
 
       const activeReferences = [];
@@ -90,7 +90,8 @@ export class CollaboratorController {
 
       const [oldCollab]: any = await pool.execute('SELECT first_name, last_name, identification FROM collaborators WHERE id = ?', [id]);
       
-      await pool.execute('DELETE FROM collaborators WHERE id = ? AND company_id = ?', [id, user.company_id]);
+      // Borrado lógico con onDelete
+      await (service as any).repository.delete(id, user.company_id);
       
       await logAudit(req, 'DELETE', 'collaborators', id, { deleted_record: oldCollab[0] });
       
@@ -173,6 +174,7 @@ export class CollaboratorController {
       const [con]: any = await pool.execute('SELECT contract_code FROM contracts WHERE id = ?', [id]);
       if (con.length === 0) throw new Error('Contrato no encontrado');
 
+      // Borrado lógico con onDelete
       await (service as any).repository.deleteContract(id, user.company_id);
       
       await logAudit(req, 'DELETE', 'contracts', id, { contract_code: con[0].contract_code });
@@ -189,10 +191,10 @@ export class CollaboratorController {
       const user = (req as any).user;
       const [data]: any = await pool.execute(`
         SELECT p.*, 
-        (SELECT COUNT(*) FROM contracts WHERE position_name = p.name AND company_id = p.company_id AND status = 'Activo') as active_count,
-        (SELECT COUNT(*) FROM contracts WHERE position_name = p.name AND company_id = p.company_id AND status != 'Activo') as inactive_count
+        (SELECT COUNT(*) FROM contracts WHERE position_name = p.name AND company_id = p.company_id AND status = 'Activo' AND onDelete = 0) as active_count,
+        (SELECT COUNT(*) FROM contracts WHERE position_name = p.name AND company_id = p.company_id AND status != 'Activo' AND onDelete = 0) as inactive_count
         FROM positions p 
-        WHERE p.company_id = ?
+        WHERE p.company_id = ? AND p.onDelete = 0
       `, [user.company_id]);
       await logAudit(req, 'LIST', 'positions');
       (res as any).json(data);
@@ -203,7 +205,8 @@ export class CollaboratorController {
     try {
       const user = (req as any).user;
       const { name } = (req as any).body;
-      const id = await service.createPosition(user.company_id, name);
+      const id = generateUUID();
+      await (service as any).repository.createPosition({ id, company_id: user.company_id, name });
       await logAudit(req, 'CREATE', 'positions', id, { name });
       (res as any).status(201).json({ id });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
@@ -232,7 +235,7 @@ export class CollaboratorController {
 
       // Validar si algún contrato usa este cargo
       const [contractUsage]: any = await pool.execute(
-        'SELECT COUNT(*) as count FROM contracts WHERE position_name = ? AND company_id = ?',
+        'SELECT COUNT(*) as count FROM contracts WHERE position_name = ? AND company_id = ? AND onDelete = 0',
         [positionName, user.company_id]
       );
 
@@ -245,7 +248,8 @@ export class CollaboratorController {
         });
       }
 
-      await pool.execute('DELETE FROM positions WHERE id = ? AND company_id = ?', [id, user.company_id]);
+      // Borrado lógico con onDelete
+      await pool.execute('UPDATE positions SET onDelete = 1 WHERE id = ? AND company_id = ?', [id, user.company_id]);
       await logAudit(req, 'DELETE', 'positions', id, { deleted_name: positionName });
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
@@ -256,11 +260,11 @@ export class CollaboratorController {
       const user = (req as any).user;
       const [data]: any = await pool.execute(`
         SELECT cc.*, 
-        (SELECT COUNT(*) FROM contracts WHERE cost_center_id = cc.id AND company_id = cc.company_id AND status = 'Activo') as active_count,
-        (SELECT COUNT(*) FROM contracts WHERE cost_center_id = cc.id AND company_id = cc.company_id AND status != 'Activo') as inactive_count,
-        (SELECT COUNT(*) FROM contracts WHERE cost_center_id = cc.id AND company_id = cc.company_id) as total_count
+        (SELECT COUNT(*) FROM contracts WHERE cost_center_id = cc.id AND company_id = cc.company_id AND status = 'Activo' AND onDelete = 0) as active_count,
+        (SELECT COUNT(*) FROM contracts WHERE cost_center_id = cc.id AND company_id = cc.company_id AND status != 'Activo' AND onDelete = 0) as inactive_count,
+        (SELECT COUNT(*) FROM contracts WHERE cost_center_id = cc.id AND company_id = cc.company_id AND onDelete = 0) as total_count
         FROM cost_centers cc 
-        WHERE cc.company_id = ?
+        WHERE cc.company_id = ? AND cc.onDelete = 0
       `, [user.company_id]);
       await logAudit(req, 'LIST', 'cost_centers');
       (res as any).json(data);
@@ -271,7 +275,8 @@ export class CollaboratorController {
     try {
       const user = (req as any).user;
       const { code, name } = (req as any).body;
-      const id = await service.createCostCenter(user.company_id, code, name);
+      const id = generateUUID();
+      await (service as any).repository.createCostCenter({ id, company_id: user.company_id, code, name });
       await logAudit(req, 'CREATE', 'cost_centers', id, { code, name });
       (res as any).status(201).json({ id });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
@@ -298,7 +303,7 @@ export class CollaboratorController {
       const ccName = ccRows[0].name;
 
       const [usage]: any = await pool.execute(
-        'SELECT COUNT(*) as count FROM contracts WHERE cost_center_id = ? AND company_id = ?',
+        'SELECT COUNT(*) as count FROM contracts WHERE cost_center_id = ? AND company_id = ? AND onDelete = 0',
         [id, user.company_id]
       );
 
@@ -309,7 +314,8 @@ export class CollaboratorController {
         });
       }
 
-      await pool.execute('DELETE FROM cost_centers WHERE id = ? AND company_id = ?', [id, user.company_id]);
+      // Borrado lógico con onDelete
+      await pool.execute('UPDATE cost_centers SET onDelete = 1 WHERE id = ? AND company_id = ?', [id, user.company_id]);
       await logAudit(req, 'DELETE', 'cost_centers', id);
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
