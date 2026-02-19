@@ -1,4 +1,3 @@
-
 import pool from '../../config/database';
 
 export class ShiftRepository {
@@ -35,7 +34,7 @@ export class ShiftRepository {
       start_time, end_time, start_time_2, end_time_2,
       entry_start_buffer, entry_end_buffer, exit_start_buffer, exit_end_buffer,
       entry_start_buffer_2, entry_end_buffer_2, exit_start_buffer_2, exit_end_buffer_2,
-      rounding, lunch_start, lunch_end, marking_zone_id 
+      rounding, lunch_start, lunch_end, marking_zone_id, is_active
     } = data;
     
     await pool.execute(`
@@ -44,14 +43,14 @@ export class ShiftRepository {
        start_time, end_time, start_time_2, end_time_2,
        entry_start_buffer, entry_end_buffer, exit_start_buffer, exit_end_buffer,
        entry_start_buffer_2, entry_end_buffer_2, exit_start_buffer_2, exit_end_buffer_2,
-       rounding, lunch_start, lunch_end, marking_zone_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       rounding, lunch_start, lunch_end, marking_zone_id, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       id, company_id, name, prefix, shift_type || 'Simple',
       start_time, end_time, start_time_2 || null, end_time_2 || null,
       entry_start_buffer || 15, entry_end_buffer || 15, exit_start_buffer || 15, exit_end_buffer || 15,
       entry_start_buffer_2 || 15, entry_end_buffer_2 || 15, exit_start_buffer_2 || 15, exit_end_buffer_2 || 15,
-      rounding || 0, lunch_start || null, lunch_end || null, marking_zone_id || null
+      rounding || 0, lunch_start || null, lunch_end || null, marking_zone_id || null, is_active === undefined ? 1 : (is_active ? 1 : 0)
     ]);
     
     return id;
