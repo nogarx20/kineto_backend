@@ -20,16 +20,16 @@ export class CollaboratorRepository {
         EXISTS(SELECT 1 FROM collaborator_biometrics cb WHERE cb.collaborator_id = c.id) as has_faceid,
         (SELECT COUNT(*) FROM collaborator_fingerprints cf WHERE cf.collaborator_id = c.id) as finger_count
       FROM collaborators c
-      LEFT JOIN contracts con ON con.collaborator_id = c.id AND con.status = 'Activo'
-      LEFT JOIN cost_centers cc ON con.cost_center_id = cc.id
-      WHERE c.company_id = ?
+      LEFT JOIN contracts con ON con.collaborator_id = c.id AND con.status = 'Activo' AND con.onDelete = 0
+      LEFT JOIN cost_centers cc ON con.cost_center_id = cc.id AND cc.onDelete = 0
+      WHERE c.company_id = ? AND c.onDelete = 0
     `, [companyId]);
     return rows;
   }
 
   async findById(companyId: string, id: string) {
     const [rows]: any = await pool.execute(
-      'SELECT * FROM collaborators WHERE company_id = ? AND id = ?',
+      'SELECT * FROM collaborators WHERE company_id = ? AND id = ? AND onDelete = 0',
       [companyId, id]
     );
     return rows[0];
@@ -43,8 +43,8 @@ export class CollaboratorRepository {
     
     await pool.execute(`
       INSERT INTO collaborators 
-      (id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, photo, pin)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, photo, pin, onDelete)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
     `, [id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, photo || null, pin || null]);
     
     return id;
@@ -78,7 +78,7 @@ export class CollaboratorRepository {
   }
 
   async delete(id: string, companyId: string) {
-    await pool.execute('DELETE FROM collaborators WHERE id = ? AND company_id = ?', [id, companyId]);
+    await pool.execute('UPDATE collaborators SET onDelete = 1 WHERE id = ? AND company_id = ?', [id, companyId]);
   }
 
   // --- Contracts ---
@@ -88,7 +88,7 @@ export class CollaboratorRepository {
       FROM contracts con
       JOIN collaborators col ON con.collaborator_id = col.id
       JOIN cost_centers cc ON con.cost_center_id = cc.id
-      WHERE con.company_id = ?
+      WHERE con.company_id = ? AND con.onDelete = 0
     `, [companyId]);
     return rows;
   }
@@ -101,8 +101,8 @@ export class CollaboratorRepository {
     
     await pool.execute(`
       INSERT INTO contracts 
-      (id, company_id, collaborator_id, cost_center_id, contract_code, start_date, end_date, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime, discount_lunch, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, company_id, collaborator_id, cost_center_id, contract_code, start_date, end_date, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime, discount_lunch, status, onDelete)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
     `, [id, company_id, collaborator_id, cost_center_id, contract_code, start_date, end_date || null, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime ? 1 : 0, discount_lunch ? 1 : 0, status || 'Activo']);
     
     return id;
@@ -123,31 +123,31 @@ export class CollaboratorRepository {
   }
 
   async deleteContract(id: string, companyId: string) {
-    await pool.execute('DELETE FROM contracts WHERE id = ? AND company_id = ?', [id, companyId]);
+    await pool.execute('UPDATE contracts SET onDelete = 1 WHERE id = ? AND company_id = ?', [id, companyId]);
   }
 
   // --- Auxiliaries ---
   async createPosition(data: any) {
     await pool.execute(
-      'INSERT INTO positions (id, company_id, name) VALUES (?, ?, ?)',
+      'INSERT INTO positions (id, company_id, name, onDelete) VALUES (?, ?, ?, 0)',
       [data.id, data.company_id, data.name]
     );
   }
 
   async listPositions(companyId: string) {
-    const [rows]: any = await pool.execute('SELECT * FROM positions WHERE company_id = ?', [companyId]);
+    const [rows]: any = await pool.execute('SELECT * FROM positions WHERE company_id = ? AND onDelete = 0', [companyId]);
     return rows;
   }
 
   async createCostCenter(data: any) {
     await pool.execute(
-      'INSERT INTO cost_centers (id, company_id, code, name) VALUES (?, ?, ?, ?)',
+      'INSERT INTO cost_centers (id, company_id, code, name, onDelete) VALUES (?, ?, ?, ?, 0)',
       [data.id, data.company_id, data.code, data.name]
     );
   }
 
   async listCostCenters(companyId: string) {
-    const [rows]: any = await pool.execute('SELECT * FROM cost_centers WHERE company_id = ?', [companyId]);
+    const [rows]: any = await pool.execute('SELECT * FROM cost_centers WHERE company_id = ? AND onDelete = 0', [companyId]);
     return rows;
   }
 }
