@@ -6,10 +6,8 @@ export class ShiftRepository {
   async findAllZones(companyId: string) {
     const [rows]: any = await pool.execute(`
       SELECT mz.*, 
-      (
-        (SELECT COUNT(*) FROM shifts s WHERE s.marking_zone_id = mz.id OR (JSON_VALID(s.marking_zones_json) AND JSON_CONTAINS(s.marking_zones_json, JSON_QUOTE(CAST(mz.id AS CHAR))))) +
-        (SELECT COUNT(*) FROM attendance_records ar WHERE ar.marking_zone_id = mz.id)
-      ) as links_count
+      (SELECT COUNT(*) FROM shifts s WHERE s.marking_zone_id = mz.id OR (JSON_VALID(s.marking_zones_json) AND JSON_CONTAINS(s.marking_zones_json, JSON_QUOTE(CAST(mz.id AS CHAR))))) as shift_links,
+      (SELECT COUNT(*) FROM attendance_records ar WHERE ar.marking_zone_id = mz.id) as attendance_links
       FROM marking_zones mz 
       WHERE mz.company_id = ?
     `, [companyId]);
