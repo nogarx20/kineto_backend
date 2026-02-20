@@ -74,7 +74,15 @@ export class UserService {
   }
 
   async getUsers(companyId: string) {
-    return await this.repository.listByCompany(companyId);
+    const users = await this.repository.listByCompany(companyId);
+    return users.map((u: any) => {
+      const roles = typeof u.roles === 'string' ? JSON.parse(u.roles) : (u.roles || []);
+      return { 
+        ...u, 
+        roles: roles.map((r: any) => ({ ...r, is_active: !!r.is_active })),
+        role_ids: roles.map((r: any) => r.id) 
+      };
+    });
   }
 
   async unlockUser(companyId: string, userId: string) {
