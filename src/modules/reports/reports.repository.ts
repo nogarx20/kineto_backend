@@ -1,9 +1,7 @@
-
 import pool from '../../config/database';
 
 export class ReportsRepository {
   async getComplianceStats(companyId: string) {
-    // Solo tomamos en cuenta colaboradores que tengan al menos un contrato 'Activo'
     const [rows]: any = await pool.execute(`
       SELECT 
         c.id, 
@@ -32,6 +30,38 @@ export class ReportsRepository {
       WHERE company_id = ? AND timestamp >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
       GROUP BY status
     `, [companyId]);
+    return rows;
+  }
+
+  async getTodayMarkingsCount(companyId: string) {
+    const [rows]: any = await pool.execute(`
+      SELECT COUNT(*) as count 
+      FROM system_logs 
+      WHERE company_id = ? AND action = 'MARK_ATTENDANCE' AND DATE(createdAt) = CURDATE()
+    `, [companyId]);
+    return rows[0]?.count || 0;
+  }
+
+  async getFailedEvents24hCount(companyId: string) {
+    const [rows]: any = await pool.execute(`
+      SELECT COUNT(*) as count 
+      FROM system_logs 
+      WHERE company_id = ? 
+      AND action IN ('LOGIN_FAILED', 'MARK_FAILED') 
+      AND createdAt >= DATE_SUB(NOW(), INTERVAL 1 DAY)
+    `, [companyId]);
+    return rows[0]?.count || 0;
+  }
+
+  async getRecentAttendanceLogs(companyId: string, limit: number = 5) {
+    const [rows]: any = await pool.execute(`
+      SELECT id, action, entity, entity_id, ip_address, details, createdAt 
+      FROM system_logs 
+      WHERE company_id = ? 
+      AND action IN ('MARK_ATTENDANCE', 'MARK_FAILED')
+      ORDER BY createdAt DESC 
+      LIMIT ?
+    `, [companyId, limit]);
     return rows;
   }
 
