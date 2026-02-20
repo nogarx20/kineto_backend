@@ -39,7 +39,7 @@ export class NoveltyRepository {
   // --- Solicitudes de Novedades ---
   async findAll(companyId: string) {
     const [rows]: any = await pool.execute(`
-      SELECT n.*, c.first_name, c.last_name, c.identification, nt.name as novelty_type_name, nt.period as novelty_period, nt.prefix as novelty_prefix
+      SELECT n.*, c.photo, c.first_name, c.last_name, c.identification, nt.name as novelty_type_name, nt.period as novelty_period, nt.prefix as novelty_prefix
       FROM novelties n
       JOIN collaborators c ON n.collaborator_id = c.id
       JOIN novelty_types nt ON n.novelty_type_id = nt.id
