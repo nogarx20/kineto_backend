@@ -1,4 +1,3 @@
-
 import { Router } from 'express';
 import { UserController } from './users.controller';
 import { authMiddleware } from '../../middlewares/auth.middleware';
@@ -14,6 +13,7 @@ router.post('/forgot-password', controller.forgotPassword);
 
 router.get('/', authMiddleware, tenantMiddleware, rbacMiddleware('users.read'), controller.list);
 router.post('/', authMiddleware, tenantMiddleware, rbacMiddleware('users.create'), controller.create);
+router.get('/summary', authMiddleware, tenantMiddleware, rbacMiddleware('users.read'), controller.getSummary);
 router.patch('/:id', authMiddleware, tenantMiddleware, rbacMiddleware('users.update'), controller.update);
 
 router.delete('/:id', authMiddleware, tenantMiddleware, rbacMiddleware('users.update'), controller.delete);
