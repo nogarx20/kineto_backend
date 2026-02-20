@@ -77,4 +77,17 @@ export class UserRepository {
   async softDelete(id: string, companyId: string) {
     await pool.execute('UPDATE users SET onDelete = 1 WHERE id = ? AND company_id = ?', [id, companyId]);
   }
+
+  async getSummary(companyId: string) {
+    const [rows]: any = await pool.query(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN is_active = 1 AND is_locked = 0 THEN 1 ELSE 0 END) as active,
+        SUM(CASE WHEN is_active = 0 THEN 1 ELSE 0 END) as inactive,
+        SUM(CASE WHEN is_locked = 1 THEN 1 ELSE 0 END) as blocked
+      FROM users 
+      WHERE company_id = ? AND onDelete = 0
+    `, [companyId]);
+    return rows[0] || { total: 0, active: 0, inactive: 0, blocked: 0 };
+  }
 }
