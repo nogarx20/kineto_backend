@@ -38,10 +38,17 @@ export class UserRepository {
   }
 
   async listByCompany(companyId: string) {
-    const [rows]: any = await pool.execute(
-      'SELECT id, email, first_name, last_name, is_active, is_locked, failed_attempts, createdAt FROM users WHERE company_id = ? AND onDelete = 0',
-      [companyId]
-    );
+    const [rows]: any = await pool.execute(`
+      SELECT u.id, u.email, u.first_name, u.last_name, u.is_active, u.is_locked, u.failed_attempts, u.createdAt,
+      (
+        SELECT JSON_ARRAYAGG(JSON_OBJECT('id', r.id, 'name', r.name, 'is_active', r.is_active))
+        FROM user_roles ur
+        JOIN roles r ON ur.role_id = r.id
+        WHERE ur.user_id = u.id
+      ) as roles
+      FROM users u 
+      WHERE u.company_id = ? AND u.onDelete = 0
+    `, [companyId]);
     return rows;
   }
 
