@@ -231,6 +231,16 @@ export class UserController {
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
 
+  async getSummary(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const summary = await repo.getSummary(user.company_id);
+      (res as any).json(summary);
+    } catch (err: any) {
+      (res as any).status(500).json({ error: err.message });
+    }
+  }
+
   async logout(req: Request, res: Response) { (res as any).json({ success: true }); }
   async forgotPassword(req: Request, res: Response) { (res as any).json({ message: 'Enviado' }); }
 }
