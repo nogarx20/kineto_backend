@@ -2,7 +2,8 @@ import pool from '../../config/database';
 
 export class ReportsRepository {
   async getComplianceStats(companyId: string) {
-    const [rows]: any = await pool.execute(`
+    // Usamos pool.query en lugar de execute para evitar problemas de compatibilidad con sentencias preparadas del servidor
+    const [rows]: any = await pool.query(`
       SELECT 
         c.id, 
         CONCAT(c.first_name, ' ', c.last_name) as name,
@@ -22,7 +23,7 @@ export class ReportsRepository {
   }
 
   async getAttendanceDistribution(companyId: string) {
-    const [rows]: any = await pool.execute(`
+    const [rows]: any = await pool.query(`
       SELECT 
         COALESCE(status, 'Unknown') as status, 
         COUNT(*) as count 
@@ -34,7 +35,7 @@ export class ReportsRepository {
   }
 
   async getTodayMarkingsCount(companyId: string) {
-    const [rows]: any = await pool.execute(`
+    const [rows]: any = await pool.query(`
       SELECT COUNT(*) as count 
       FROM system_logs 
       WHERE company_id = ? AND action = 'MARK_ATTENDANCE' AND DATE(createdAt) = CURDATE()
@@ -43,7 +44,7 @@ export class ReportsRepository {
   }
 
   async getFailedEvents24hCount(companyId: string) {
-    const [rows]: any = await pool.execute(`
+    const [rows]: any = await pool.query(`
       SELECT COUNT(*) as count 
       FROM system_logs 
       WHERE company_id = ? 
@@ -54,7 +55,9 @@ export class ReportsRepository {
   }
 
   async getRecentAttendanceLogs(companyId: string, limit: number = 5) {
-    const [rows]: any = await pool.execute(`
+    // pool.execute falla en muchas versiones de MySQL al usar placeholders (?) en la cláusula LIMIT.
+    // pool.query es la solución estándar para este escenario.
+    const [rows]: any = await pool.query(`
       SELECT id, action, entity, entity_id, ip_address, details, createdAt 
       FROM system_logs 
       WHERE company_id = ? 
@@ -66,7 +69,7 @@ export class ReportsRepository {
   }
 
   async getAuditLogs(companyId: string) {
-    const [rows]: any = await pool.execute(`
+    const [rows]: any = await pool.query(`
       SELECT id, action, entity, entity_id, ip_address, details, createdAt 
       FROM system_logs 
       WHERE company_id = ? 
