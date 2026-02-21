@@ -5,6 +5,11 @@ import pool from '../config/database';
 export const rbacMiddleware = (permissionCode: string) => {
   return async (req: Request, res: Response, next: any) => {
     try {
+      // Permitir solicitudes OPTIONS (Preflight) para evitar bloqueos CORS
+      if (req.method === 'OPTIONS') {
+        return next();
+      }
+
       const user = (req as any).user;
       
       if (!user || !user.id) {
