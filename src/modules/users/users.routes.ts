@@ -11,21 +11,20 @@ router.post('/login', controller.login);
 router.post('/logout', authMiddleware, controller.logout);
 router.post('/forgot-password', controller.forgotPassword);
 
-router.get('/', authMiddleware, tenantMiddleware, rbacMiddleware('users.read'), controller.list);
-router.post('/', authMiddleware, tenantMiddleware, rbacMiddleware('users.create'), controller.create);
-router.get('/summary', authMiddleware, tenantMiddleware, rbacMiddleware('users.read'), controller.getSummary);
-router.patch('/:id', authMiddleware, tenantMiddleware, rbacMiddleware('users.update'), controller.update);
+// Rutas protegidas
+router.use(authMiddleware, tenantMiddleware);
 
-router.delete('/:id', authMiddleware, tenantMiddleware, rbacMiddleware('users.update'), controller.delete);
+router.get('/', rbacMiddleware('users.view'), controller.list);
+router.post('/', rbacMiddleware('users.manage'), controller.create);
+router.get('/summary', rbacMiddleware('users.view'), controller.getSummary);
+router.patch('/:id', rbacMiddleware('users.manage'), controller.update);
+router.delete('/:id', rbacMiddleware('users.manage'), controller.delete);
 
-// Ruta para el inicio de sesión (Permisos combinados)
-router.get('/:id/effective-permissions', authMiddleware, tenantMiddleware, controller.getEffectivePermissions);
-
-// Rutas para gestión administrativa (Solo permisos directos)
-router.get('/:id/permissions', authMiddleware, tenantMiddleware, rbacMiddleware('users.update'), controller.getPermissions);
-router.patch('/:id/permissions', authMiddleware, tenantMiddleware, rbacMiddleware('users.update'), controller.updatePermissions);
-
-router.get('/:id/logs', authMiddleware, tenantMiddleware, rbacMiddleware('users.update'), controller.getLogs);
-router.post('/:id/unlock', authMiddleware, tenantMiddleware, rbacMiddleware('users.update'), controller.unlock);
+// Permisos y Logs
+router.get('/:id/effective-permissions', controller.getEffectivePermissions); // Para login/frontend
+router.get('/:id/permissions', rbacMiddleware('users.manage'), controller.getPermissions);
+router.patch('/:id/permissions', rbacMiddleware('users.manage'), controller.updatePermissions);
+router.get('/:id/logs', rbacMiddleware('users.manage'), controller.getLogs);
+router.post('/:id/unlock', rbacMiddleware('users.manage'), controller.unlock);
 
 export default router;
