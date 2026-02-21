@@ -1,4 +1,3 @@
-
 import { Router } from 'express';
 import { RoleController } from './roles.controller';
 import { authMiddleware } from '../../middlewares/auth.middleware';
@@ -10,17 +9,17 @@ const controller = new RoleController();
 
 router.use(authMiddleware, tenantMiddleware);
 
-router.get('/', rbacMiddleware('roles.read'), controller.list);
-router.post('/', rbacMiddleware('roles.create'), controller.create);
-router.patch('/:id', rbacMiddleware('roles.update'), controller.update);
-router.delete('/:id', rbacMiddleware('roles.update'), controller.delete);
+router.get('/', rbacMiddleware('roles.view'), controller.list);
+router.post('/', rbacMiddleware('roles.manage'), controller.create);
+router.patch('/:id', rbacMiddleware('roles.manage'), controller.update);
+router.delete('/:id', rbacMiddleware('roles.manage'), controller.delete);
 
 // Gestión de matriz de permisos del rol
-router.get('/:id/permissions', rbacMiddleware('roles.update'), controller.getRolePermissions);
-router.patch('/:id/permissions', rbacMiddleware('roles.update'), controller.updateRolePermissions);
+router.get('/:id/permissions', rbacMiddleware('roles.view'), controller.getRolePermissions);
+router.patch('/:id/permissions', rbacMiddleware('roles.manage'), controller.updateRolePermissions);
 
 // Gestión de usuarios por rol
-router.get('/:id/users', rbacMiddleware('roles.update'), controller.getRoleUsers);
-router.patch('/:id/users', rbacMiddleware('roles.update'), controller.updateRoleUsers);
+router.get('/:id/users', rbacMiddleware('roles.view'), controller.getRoleUsers);
+router.patch('/:id/users', rbacMiddleware('roles.manage'), controller.updateRoleUsers);
 
 export default router;
