@@ -1,4 +1,3 @@
-
 import { Router } from 'express';
 import { CollaboratorController } from './collaborators.controller';
 import { authMiddleware } from '../../middlewares/auth.middleware';
@@ -10,27 +9,28 @@ const controller = new CollaboratorController();
 
 router.use(authMiddleware, tenantMiddleware);
 
-// Collaborators
-router.get('/', rbacMiddleware('collaborators.read'), controller.list);
-router.post('/', rbacMiddleware('collaborators.create'), controller.create);
-router.patch('/:id', rbacMiddleware('collaborators.create'), controller.update); 
-router.delete('/:id', rbacMiddleware('collaborators.create'), controller.delete);
+// Personal
+router.get('/', rbacMiddleware('collaborators.personal.view'), controller.list);
+router.post('/', rbacMiddleware('collaborators.personal.create'), controller.create);
+router.put('/:id', rbacMiddleware('collaborators.personal.update'), controller.update);
+router.delete('/:id', rbacMiddleware('collaborators.personal.delete'), controller.delete);
 
-// Contracts (Nomina)
-router.get('/contracts', rbacMiddleware('collaborators.read'), controller.listContracts);
-router.post('/contracts', rbacMiddleware('collaborators.create'), controller.createContract);
-router.patch('/contracts/:id', rbacMiddleware('collaborators.create'), controller.updateContract);
-router.delete('/contracts/:id', rbacMiddleware('collaborators.create'), controller.deleteContract);
+// Contratos
+router.get('/contracts', rbacMiddleware('collaborators.contracts.view'), controller.listContracts);
+router.post('/contracts', rbacMiddleware('collaborators.contracts.create'), controller.createContract);
+router.put('/contracts/:id', rbacMiddleware('collaborators.contracts.update'), controller.updateContract);
+router.delete('/contracts/:id', rbacMiddleware('collaborators.contracts.delete'), controller.deleteContract);
 
-// Auxiliares
-router.get('/positions', rbacMiddleware('collaborators.read'), controller.listPositions);
-router.post('/positions', rbacMiddleware('collaborators.create'), controller.createPosition);
-router.patch('/positions/:id', rbacMiddleware('collaborators.create'), controller.updatePosition);
-router.delete('/positions/:id', rbacMiddleware('collaborators.create'), controller.deletePosition);
+// Cargos
+router.get('/positions', rbacMiddleware('collaborators.positions.view'), controller.listPositions);
+router.post('/positions', rbacMiddleware('collaborators.positions.manage'), controller.createPosition);
+router.put('/positions/:id', rbacMiddleware('collaborators.positions.manage'), controller.updatePosition);
+router.delete('/positions/:id', rbacMiddleware('collaborators.positions.manage'), controller.deletePosition);
 
-router.get('/cost-centers', rbacMiddleware('collaborators.read'), controller.listCostCenters);
-router.post('/cost-centers', rbacMiddleware('collaborators.create'), controller.createCostCenter);
-router.patch('/cost-centers/:id', rbacMiddleware('collaborators.create'), controller.updateCostCenter);
-router.delete('/cost-centers/:id', rbacMiddleware('collaborators.create'), controller.deleteCostCenter);
+// Centros de Costo
+router.get('/cost-centers', rbacMiddleware('collaborators.cost_centers.view'), controller.listCostCenters);
+router.post('/cost-centers', rbacMiddleware('collaborators.cost_centers.manage'), controller.createCostCenter);
+router.put('/cost-centers/:id', rbacMiddleware('collaborators.cost_centers.manage'), controller.updateCostCenter);
+router.delete('/cost-centers/:id', rbacMiddleware('collaborators.cost_centers.manage'), controller.deleteCostCenter);
 
 export default router;
