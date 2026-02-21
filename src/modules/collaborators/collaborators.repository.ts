@@ -136,6 +136,14 @@ export class CollaboratorRepository {
     await pool.execute('UPDATE collaborators SET onDelete = 1 WHERE id = ? AND company_id = ?', [id, companyId]);
   }
 
+  async getFingerprints(collaboratorId: string) {
+    const [rows]: any = await pool.execute(
+      'SELECT id, finger_name, createdAt FROM collaborator_fingerprints WHERE collaborator_id = ?',
+      [collaboratorId]
+    );
+    return rows;
+  }
+
   // --- Contracts ---
   async listContracts(companyId: string) {
     const [rows]: any = await pool.execute(`
