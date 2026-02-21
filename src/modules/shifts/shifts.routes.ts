@@ -1,4 +1,3 @@
-
 import { Router } from 'express';
 import { ShiftController } from './shifts.controller';
 import { authMiddleware } from '../../middlewares/auth.middleware';
@@ -10,14 +9,16 @@ const controller = new ShiftController();
 
 router.use(authMiddleware, tenantMiddleware);
 
-router.get('/zones', rbacMiddleware('shifts.manage'), controller.listZones);
-router.post('/zones', rbacMiddleware('shifts.manage'), controller.createZone);
-router.patch('/zones/:id', rbacMiddleware('shifts.manage'), controller.updateZone);
-router.delete('/zones/:id', rbacMiddleware('shifts.manage'), controller.deleteZone);
+// Gestión de Turnos
+router.get('/', rbacMiddleware('shifts.list.view'), controller.list);
+router.post('/', rbacMiddleware('shifts.list.manage'), controller.create);
+router.put('/:id', rbacMiddleware('shifts.list.manage'), controller.update);
+router.delete('/:id', rbacMiddleware('shifts.list.manage'), controller.delete);
 
-router.get('/', rbacMiddleware('shifts.manage'), controller.listShifts);
-router.post('/', rbacMiddleware('shifts.manage'), controller.createShift);
-router.patch('/:id', rbacMiddleware('shifts.manage'), controller.updateShift);
-router.delete('/:id', rbacMiddleware('shifts.manage'), controller.deleteShift);
+// Zonas de Marcaje
+router.get('/zones', rbacMiddleware('shifts.zones.view'), controller.listZones);
+router.post('/zones', rbacMiddleware('shifts.zones.manage'), controller.createZone);
+router.put('/zones/:id', rbacMiddleware('shifts.zones.manage'), controller.updateZone);
+router.delete('/zones/:id', rbacMiddleware('shifts.zones.manage'), controller.deleteZone);
 
 export default router;
