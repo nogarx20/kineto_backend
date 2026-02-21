@@ -7,24 +7,68 @@ export class CollaboratorRepository {
     const [rows]: any = await pool.execute(`
       SELECT 
         c.*, 
+        con.id as contract_id,
         con.position_name,
         con.cost_center_id,
         cc.code as cost_center_code,
-        con.contract_code as last_contract_code,
+        con.contract_code,
         con.start_date as contract_start,
         con.end_date as contract_end,
         con.rest_days,
         con.working_days,
         con.discount_lunch,
         con.weekly_hours,
+        con.status as contract_status,
         EXISTS(SELECT 1 FROM collaborator_biometrics cb WHERE cb.collaborator_id = c.id) as has_faceid,
         (SELECT COUNT(*) FROM collaborator_fingerprints cf WHERE cf.collaborator_id = c.id) as finger_count
       FROM collaborators c
-      LEFT JOIN contracts con ON con.collaborator_id = c.id AND con.status = 'Activo' AND con.onDelete = 0
+      LEFT JOIN contracts con ON con.collaborator_id = c.id AND con.onDelete = 0
       LEFT JOIN cost_centers cc ON con.cost_center_id = cc.id AND cc.onDelete = 0
       WHERE c.company_id = ? AND c.onDelete = 0
+      ORDER BY c.first_name, c.last_name
     `, [companyId]);
-    return rows;
+
+    const collaboratorsMap = new Map();
+
+    rows.forEach((row: any) => {
+        if (!collaboratorsMap.has(row.id)) {
+            collaboratorsMap.set(row.id, {
+                ...row,
+                contracts: [],
+                // Mantener compatibilidad con campos planos (usando el activo o el último encontrado)
+                last_contract_code: null,
+                position_name: null,
+                cost_center_code: null
+            });
+        }
+
+        const collab = collaboratorsMap.get(row.id);
+
+        if (row.contract_id) {
+            const contract = {
+                id: row.contract_id,
+                contract_code: row.contract_code,
+                position_name: row.position_name,
+                cost_center_id: row.cost_center_id,
+                cost_center_code: row.cost_center_code,
+                start_date: row.contract_start,
+                end_date: row.contract_end,
+                status: row.contract_status,
+                weekly_hours: row.weekly_hours
+            };
+            collab.contracts.push(contract);
+
+            // Priorizar contrato activo para la vista principal
+            if (row.contract_status === 'Activo' || !collab.last_contract_code) {
+                collab.last_contract_code = row.contract_code;
+                collab.position_name = row.position_name;
+                collab.cost_center_code = row.cost_center_code;
+                // Se pueden mapear otros campos si es necesario
+            }
+        }
+    });
+
+    return Array.from(collaboratorsMap.values());
   }
 
   async findById(companyId: string, id: string) {
