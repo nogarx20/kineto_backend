@@ -10,10 +10,10 @@ const controller = new ShiftController();
 router.use(authMiddleware, tenantMiddleware);
 
 // Gestión de Turnos
-router.get('/', rbacMiddleware('shifts.list.view'), controller.listShifts);
-router.post('/', rbacMiddleware('shifts.list.manage'), controller.createShift);
-router.put('/:id', rbacMiddleware('shifts.list.manage'), controller.updateShift);
-router.delete('/:id', rbacMiddleware('shifts.list.manage'), controller.deleteShift);
+router.get('/', rbacMiddleware('shifts.list.view'), controller.list);
+router.post('/', rbacMiddleware('shifts.list.manage'), controller.create);
+router.put('/:id', rbacMiddleware('shifts.list.manage'), controller.update);
+router.delete('/:id', rbacMiddleware('shifts.list.manage'), controller.delete);
 
 // Zonas de Marcaje
 router.get('/zones', rbacMiddleware('shifts.zones.view'), controller.listZones);
