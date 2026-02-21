@@ -24,7 +24,7 @@ export class CollaboratorController {
       const user = (req as any).user;
       const body = (req as any).body;
       // Forzar activo por defecto en creación
-      const id = await service.createCollaborator(user.company_id, { ...body, is_active: true });
+      const id = await service.createCollaborator(user.company_id, { ...body });
       
       await logAudit(req, 'CREATE', 'collaborators', id, body);
       (res as any).status(201).json({ id });
@@ -40,7 +40,7 @@ export class CollaboratorController {
       const user = (req as any).user;
 
       // Validación de regla de negocio: No inactivar si existen contratos activos
-      if (body.is_active === false || body.is_active === 0 || body.is_active === '0') {
+      if (body.status === 'Inactive' || body.status === 'Rejected') {
         const [activeContracts]: any = await pool.execute(
           'SELECT COUNT(*) as count FROM contracts WHERE collaborator_id = ? AND status = "Activo" AND company_id = ? AND onDelete = 0',
           [id, user.company_id]
