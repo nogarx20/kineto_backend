@@ -21,7 +21,8 @@ export const rbacMiddleware = (permissionCode: string) => {
           EXISTS (
             SELECT 1 FROM role_permissions rp
             JOIN user_roles ur ON rp.role_id = ur.role_id
-            WHERE ur.user_id = ? AND rp.permission_id = p.id
+            JOIN roles r ON ur.role_id = r.id
+            WHERE ur.user_id = ? AND rp.permission_id = p.id AND r.is_active = 1
           )
           OR
           -- Vía Permisos directos
