@@ -1,4 +1,3 @@
-
 import { Router } from 'express';
 import { NoveltyController } from './novelties.controller';
 import { authMiddleware } from '../../middlewares/auth.middleware';
@@ -10,17 +9,17 @@ const controller = new NoveltyController();
 
 router.use(authMiddleware, tenantMiddleware);
 
-// Types
-router.get('/types', rbacMiddleware('novelties.manage'), controller.listTypes);
-router.post('/types', rbacMiddleware('novelties.manage'), controller.createType);
-router.patch('/types/:id', rbacMiddleware('novelties.manage'), controller.updateType);
-router.delete('/types/:id', rbacMiddleware('novelties.manage'), controller.deleteType);
+// Solicitudes
+router.get('/', rbacMiddleware('novelties.requests.view'), controller.list);
+router.post('/', rbacMiddleware('novelties.requests.manage'), controller.create);
+router.put('/:id', rbacMiddleware('novelties.requests.manage'), controller.update);
+router.delete('/:id', rbacMiddleware('novelties.requests.manage'), controller.delete);
+router.patch('/:id/status', rbacMiddleware('novelties.requests.manage'), controller.updateStatus);
 
-// Novelties
-router.get('/', rbacMiddleware('novelties.manage'), controller.list);
-router.post('/', rbacMiddleware('novelties.manage'), controller.create);
-router.patch('/:id', rbacMiddleware('novelties.manage'), controller.update);
-router.patch('/:id/status', rbacMiddleware('novelties.manage'), controller.updateStatus);
-router.delete('/:id', rbacMiddleware('novelties.manage'), controller.delete);
+// Tipos de Novedad
+router.get('/types', rbacMiddleware('novelties.types.view'), controller.listTypes);
+router.post('/types', rbacMiddleware('novelties.types.manage'), controller.createType);
+router.put('/types/:id', rbacMiddleware('novelties.types.manage'), controller.updateType);
+router.delete('/types/:id', rbacMiddleware('novelties.types.manage'), controller.deleteType);
 
 export default router;
