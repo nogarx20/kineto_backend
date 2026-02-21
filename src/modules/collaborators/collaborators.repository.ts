@@ -7,6 +7,7 @@ export class CollaboratorRepository {
     const [rows]: any = await pool.execute(`
       SELECT 
         c.*, 
+        c.status as collab_status_id,
         con.id as contract_id,
         con.position_name,
         con.cost_center_id,
@@ -30,10 +31,13 @@ export class CollaboratorRepository {
 
     const collaboratorsMap = new Map();
 
+    const statusMap = ['Active', 'Inactive', 'Pending', 'Rejected'];
+
     rows.forEach((row: any) => {
         if (!collaboratorsMap.has(row.id)) {
             collaboratorsMap.set(row.id, {
                 ...row,
+                status: statusMap[row.collab_status_id] || 'Pending',
                 contracts: [],
                 // Mantener compatibilidad con campos planos (usando el activo o el último encontrado)
                 last_contract_code: null,
@@ -82,29 +86,36 @@ export class CollaboratorRepository {
   async create(data: any) {
     const { 
       id, company_id, identification, first_name, last_name, 
-      email, phone, address, gender, birth_date, username, password, photo, pin 
+      email, phone, address, gender, birth_date, username, password, photo, pin, status
     } = data;
     
+    // Mapeo Frontend -> DB: Active(0), Inactive(1), Pending(2), Rejected(3)
+    const statusMap: any = { 'Active': 0, 'Inactive': 1, 'Pending': 2, 'Rejected': 3 };
+    const dbStatus = statusMap[status] ?? 2;
+
     await pool.execute(`
       INSERT INTO collaborators 
-      (id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, photo, pin, onDelete)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-    `, [id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, photo || null, pin || null]);
+      (id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, photo, pin, status, is_active, onDelete)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+    `, [id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, photo || null, pin || null, dbStatus, dbStatus === 0 ? 1 : 0]);
     
     return id;
   }
 
   async update(id: string, companyId: string, data: any) {
-    const { identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, is_active, photo, pin } = data;
+    const { identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, photo, pin, status } = data;
+    
+    const statusMap: any = { 'Active': 0, 'Inactive': 1, 'Pending': 2, 'Rejected': 3 };
+    const dbStatus = statusMap[status] ?? 2;
     
     const updates = [
         'identification = ?', 'first_name = ?', 'last_name = ?', 'email = ?', 
         'phone = ?', 'address = ?', 'gender = ?', 'birth_date = ?', 
-        'username = ?', 'is_active = ?', 'photo = ?', 'pin = ?'
+        'username = ?', 'is_active = ?', 'photo = ?', 'pin = ?', 'status = ?'
     ];
     const params: any[] = [
         identification, first_name, last_name, email, phone, 
-        address, gender, birth_date, username, is_active ? 1 : 0, photo || null, pin || null
+        address, gender, birth_date, username, dbStatus === 0 ? 1 : 0, photo || null, pin || null, dbStatus
     ];
 
     if (password !== undefined && password !== null && password !== '') {
