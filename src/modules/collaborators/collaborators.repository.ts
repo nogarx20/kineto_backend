@@ -59,7 +59,7 @@ export class CollaboratorRepository {
             collab.contracts.push(contract);
 
             // Priorizar contrato activo para la vista principal
-            if (row.contract_status === 'Activo' || !collab.last_contract_code) {
+            if (row.contract_status === 'Activo') {
                 collab.last_contract_code = row.contract_code;
                 collab.position_name = row.position_name;
                 collab.cost_center_code = row.cost_center_code;
