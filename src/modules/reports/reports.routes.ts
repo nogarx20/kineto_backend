@@ -1,19 +1,16 @@
-
 import { Router } from 'express';
-import { ReportsController } from './reports.controller';
+import { ReportController } from './reports.controller';
 import { authMiddleware } from '../../middlewares/auth.middleware';
 import { tenantMiddleware } from '../../middlewares/tenant.middleware';
 import { rbacMiddleware } from '../../middlewares/rbac.middleware';
 
 const router = Router();
-const controller = new ReportsController();
+const controller = new ReportController();
 
 router.use(authMiddleware, tenantMiddleware);
 
-// El dashboard ahora usa dashboard.view para permitir acceso a indicadores básicos
-router.get('/stats', rbacMiddleware('dashboard.view'), controller.getStats);
-
-// Los logs de auditoría se mantienen bajo settings.manage por ser información sensible
-router.get('/audit-logs', rbacMiddleware('settings.manage'), controller.getAuditLogs);
+router.get('/dashboard', rbacMiddleware('dashboard.view'), controller.getDashboardStats);
+router.get('/general', rbacMiddleware('reports.view'), controller.getGeneralReport);
+router.get('/audit', rbacMiddleware('security.view'), controller.getAuditLogs); // Logs de auditoría suelen ser de seguridad
 
 export default router;
