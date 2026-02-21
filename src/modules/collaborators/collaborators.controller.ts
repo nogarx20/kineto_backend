@@ -101,6 +101,16 @@ export class CollaboratorController {
     }
   }
 
+  async getFingerprints(req: Request, res: Response) {
+    try {
+      const { id } = (req as any).params;
+      const data = await (service as any).repository.getFingerprints(id);
+      (res as any).json(data);
+    } catch (err: any) {
+      (res as any).status(500).json({ error: err.message });
+    }
+  }
+
   // --- Contratos (Nómina) ---
   async listContracts(req: Request, res: Response) {
     try {
