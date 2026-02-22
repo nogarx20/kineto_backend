@@ -263,10 +263,10 @@ export class CollaboratorController {
   async createCostCenter(req: Request, res: Response) {
     try {
       const user = (req as any).user;
-      const { code, name } = (req as any).body;
+      const { code, name, is_active } = (req as any).body;
       const id = generateUUID();
-      await (service as any).repository.createCostCenter({ id, company_id: user.company_id, code, name });
-      await logAudit(req, 'CREATE', 'cost_centers', id, { code, name });
+      await (service as any).repository.createCostCenter({ id, company_id: user.company_id, code, name, is_active });
+      await logAudit(req, 'CREATE', 'cost_centers', id, { code, name, is_active });
       (res as any).status(201).json({ id });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
@@ -274,10 +274,22 @@ export class CollaboratorController {
   async updateCostCenter(req: Request, res: Response) {
     try {
       const { id } = (req as any).params;
-      const { code, name } = (req as any).body;
+      const { code, name, is_active } = (req as any).body;
       const user = (req as any).user;
-      await pool.execute('UPDATE cost_centers SET code = ?, name = ? WHERE id = ? AND company_id = ?', [code, name, id, user.company_id]);
-      await logAudit(req, 'UPDATE', 'cost_centers', id, { code, name });
+
+      // Validación: No inactivar si tiene contratos activos
+      if (is_active === false || is_active === 0) {
+        const [activeContracts]: any = await pool.execute(
+          'SELECT COUNT(*) as count FROM contracts WHERE cost_center_id = ? AND status = "Activo" AND company_id = ? AND onDelete = 0',
+          [id, user.company_id]
+        );
+        if (activeContracts[0].count > 0) {
+          throw new Error(`Acción Denegada: El centro de costo posee ${activeContracts[0].count} contrato(s) activos. Debe reasignarlos antes de inactivar.`);
+        }
+      }
+
+      await (service as any).repository.updateCostCenter(id, user.company_id, { code, name, is_active });
+      await logAudit(req, 'UPDATE', 'cost_centers', id, { code, name, is_active });
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
@@ -287,24 +299,7 @@ export class CollaboratorController {
       const { id } = (req as any).params;
       const user = (req as any).user;
 
-      const [ccRows]: any = await pool.execute('SELECT name FROM cost_centers WHERE id = ? AND company_id = ?', [id, user.company_id]);
-      if (ccRows.length === 0) throw new Error('Centro de costo no encontrado');
-      const ccName = ccRows[0].name;
-
-      const [usage]: any = await pool.execute(
-        'SELECT COUNT(*) as count FROM contracts WHERE cost_center_id = ? AND company_id = ? AND onDelete = 0',
-        [id, user.company_id]
-      );
-
-      if (usage[0].count > 0) {
-        return (res as any).status(400).json({ 
-          error: 'Restricción de Integridad',
-          message: `Acción denegada: El centro de costo "${ccName}" posee ${usage[0].count} contrato(s) vinculado(s).\n\nDebe reasignar estos contratos antes de proceder con la eliminación.`
-        });
-      }
-
-      // Borrado lógico con onDelete
-      await pool.execute('UPDATE cost_centers SET onDelete = 1 WHERE id = ? AND company_id = ?', [id, user.company_id]);
+      await (service as any).repository.deleteCostCenter(id, user.company_id);
       await logAudit(req, 'DELETE', 'cost_centers', id);
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
