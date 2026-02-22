@@ -192,13 +192,42 @@ export class CollaboratorRepository {
   // --- Auxiliaries ---
   async createPosition(data: any) {
     await pool.execute(
-      'INSERT INTO positions (id, company_id, name, onDelete) VALUES (?, ?, ?, 0)',
-      [data.id, data.company_id, data.name]
+      'INSERT INTO positions (id, company_id, name, is_active, onDelete) VALUES (?, ?, ?, ?, 0)',
+      [data.id, data.company_id, data.name, data.is_active ? 1 : 0]
     );
   }
 
+  async updatePosition(id: string, companyId: string, data: any) {
+    const { name, is_active } = data;
+    await pool.execute(
+      'UPDATE positions SET name = ?, is_active = ? WHERE id = ? AND company_id = ?',
+      [name, is_active ? 1 : 0, id, companyId]
+    );
+  }
+
+  async deletePosition(id: string, companyId: string) {
+    // Verificar dependencias antes de eliminar
+    const [pos]: any = await pool.execute('SELECT name FROM positions WHERE id = ? AND company_id = ?', [id, companyId]);
+    if (pos.length > 0) {
+      const positionName = pos[0].name;
+      const [contracts]: any = await pool.execute(
+        'SELECT COUNT(*) as count FROM contracts WHERE position_name = ? AND company_id = ? AND onDelete = 0',
+        [positionName, companyId]
+      );
+      if (contracts[0].count > 0) {
+        throw new Error(`Acción Denegada: El cargo "${positionName}" posee ${contracts[0].count} contrato(s) vinculado(s).`);
+      }
+    }
+    await pool.execute('UPDATE positions SET onDelete = 1 WHERE id = ? AND company_id = ?', [id, companyId]);
+  }
+
   async listPositions(companyId: string) {
-    const [rows]: any = await pool.execute('SELECT * FROM positions WHERE company_id = ? AND onDelete = 0', [companyId]);
+    const [rows]: any = await pool.execute(`
+      SELECT p.*,
+      (SELECT COUNT(*) FROM contracts c WHERE c.position_name = p.name AND c.company_id = p.company_id AND c.onDelete = 0 AND c.status = 'Activo') as active_count,
+      (SELECT COUNT(*) FROM contracts c WHERE c.position_name = p.name AND c.company_id = p.company_id AND c.onDelete = 0 AND c.status != 'Activo') as inactive_count
+      FROM positions p WHERE p.company_id = ? AND p.onDelete = 0 ORDER BY p.name
+    `, [companyId]);
     return rows;
   }
 
