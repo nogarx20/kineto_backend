@@ -214,10 +214,10 @@ export class CollaboratorController {
   async createPosition(req: Request, res: Response) {
     try {
       const user = (req as any).user;
-      const { name } = (req as any).body;
+      const { name, is_active } = (req as any).body;
       const id = generateUUID();
-      await (service as any).repository.createPosition({ id, company_id: user.company_id, name });
-      await logAudit(req, 'CREATE', 'positions', id, { name });
+      await (service as any).repository.createPosition({ id, company_id: user.company_id, name, is_active });
+      await logAudit(req, 'CREATE', 'positions', id, { name, is_active });
       (res as any).status(201).json({ id });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
@@ -225,10 +225,10 @@ export class CollaboratorController {
   async updatePosition(req: Request, res: Response) {
     try {
       const { id } = (req as any).params;
-      const { name } = (req as any).body;
+      const { name, is_active } = (req as any).body;
       const user = (req as any).user;
-      await pool.execute('UPDATE positions SET name = ? WHERE id = ? AND company_id = ?', [name, id, user.company_id]);
-      await logAudit(req, 'UPDATE', 'positions', id, { name });
+      await (service as any).repository.updatePosition(id, user.company_id, { name, is_active });
+      await logAudit(req, 'UPDATE', 'positions', id, { name, is_active });
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
@@ -238,29 +238,8 @@ export class CollaboratorController {
       const { id } = (req as any).params;
       const user = (req as any).user;
 
-      // Obtener nombre del cargo para validar en contratos
-      const [posRows]: any = await pool.execute('SELECT name FROM positions WHERE id = ? AND company_id = ?', [id, user.company_id]);
-      if (posRows.length === 0) throw new Error('Cargo no encontrado');
-      const positionName = posRows[0].name;
-
-      // Validar si algún contrato usa este cargo
-      const [contractUsage]: any = await pool.execute(
-        'SELECT COUNT(*) as count FROM contracts WHERE position_name = ? AND company_id = ? AND onDelete = 0',
-        [positionName, user.company_id]
-      );
-
-      if (contractUsage[0].count > 0) {
-        return (res as any).status(400).json({ 
-          error: 'Restricción de Integridad',
-          message: `Acción denegada: El cargo "${positionName}" posee dependencias vinculadas que impiden su eliminación.\n\n` + 
-                   `• Contratos vinculados: ${contractUsage[0].count} registros encontrados.\n\n` + 
-                   `Debe reasignar a los colaboradores de estos contratos a un nuevo cargo antes de proceder con el borrado definitivo.`
-        });
-      }
-
-      // Borrado lógico con onDelete
-      await pool.execute('UPDATE positions SET onDelete = 1 WHERE id = ? AND company_id = ?', [id, user.company_id]);
-      await logAudit(req, 'DELETE', 'positions', id, { deleted_name: positionName });
+      await (service as any).repository.deletePosition(id, user.company_id);
+      await logAudit(req, 'DELETE', 'positions', id);
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
