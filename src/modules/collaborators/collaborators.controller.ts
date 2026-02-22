@@ -11,7 +11,7 @@ export class CollaboratorController {
   async list(req: Request, res: Response) {
     try {
       const user = (req as any).user;
-      const data = await service.getCollaborators(user.company_id);
+      const data = await service.findAll(user.company_id);
       await logAudit(req, 'LIST', 'collaborators');
       (res as any).json(data);
     } catch (err: any) {
@@ -24,7 +24,7 @@ export class CollaboratorController {
       const user = (req as any).user;
       const body = (req as any).body;
       // Forzar activo por defecto en creación
-      const id = await service.createCollaborator(user.company_id, { ...body });
+      const id = await service.create(user.company_id, { ...body });
       
       await logAudit(req, 'CREATE', 'collaborators', id, body);
       (res as any).status(201).json({ id });
