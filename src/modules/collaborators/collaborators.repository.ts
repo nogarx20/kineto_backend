@@ -233,13 +233,46 @@ export class CollaboratorRepository {
 
   async createCostCenter(data: any) {
     await pool.execute(
-      'INSERT INTO cost_centers (id, company_id, code, name, onDelete) VALUES (?, ?, ?, ?, 0)',
-      [data.id, data.company_id, data.code, data.name]
+      'INSERT INTO cost_centers (id, company_id, code, name, is_active, onDelete) VALUES (?, ?, ?, ?, ?, 0)',
+      [data.id, data.company_id, data.code, data.name, data.is_active ? 1 : 0]
     );
   }
 
+  async updateCostCenter(id: string, companyId: string, data: any) {
+    const { code, name, is_active } = data;
+    await pool.execute(
+      'UPDATE cost_centers SET code = ?, name = ?, is_active = ? WHERE id = ? AND company_id = ?',
+      [code, name, is_active ? 1 : 0, id, companyId]
+    );
+  }
+
+  async deleteCostCenter(id: string, companyId: string) {
+    const [ccRows]: any = await pool.execute('SELECT name FROM cost_centers WHERE id = ? AND company_id = ?', [id, companyId]);
+    if (ccRows.length === 0) throw new Error('Centro de costo no encontrado');
+    const ccName = ccRows[0].name;
+
+    const [usage]: any = await pool.execute(
+      'SELECT COUNT(*) as count FROM contracts WHERE cost_center_id = ? AND company_id = ? AND onDelete = 0',
+      [id, companyId]
+    );
+
+    if (usage[0].count > 0) {
+      throw new Error(`Acción denegada: El centro de costo "${ccName}" posee ${usage[0].count} contrato(s) vinculado(s).`);
+    }
+
+    await pool.execute('UPDATE cost_centers SET onDelete = 1 WHERE id = ? AND company_id = ?', [id, companyId]);
+  }
+
   async listCostCenters(companyId: string) {
-    const [rows]: any = await pool.execute('SELECT * FROM cost_centers WHERE company_id = ? AND onDelete = 0', [companyId]);
-    return rows;
+    const [rows]: any = await pool.execute(`
+      SELECT cc.*, 
+      (SELECT COUNT(*) FROM contracts WHERE cost_center_id = cc.id AND company_id = cc.company_id AND status = 'Activo' AND onDelete = 0) as active_count,
+      (SELECT COUNT(*) FROM contracts WHERE cost_center_id = cc.id AND company_id = cc.company_id AND status != 'Activo' AND onDelete = 0) as inactive_count,
+      (SELECT COUNT(*) FROM contracts WHERE cost_center_id = cc.id AND company_id = cc.company_id AND onDelete = 0) as total_count
+      FROM cost_centers cc 
+      WHERE cc.company_id = ? AND cc.onDelete = 0
+      ORDER BY cc.name
+    `, [companyId]);
+    return rows.map((row: any) => ({ ...row, is_active: !!row.is_active }));
   }
 }
