@@ -47,7 +47,7 @@ export class ReportsRepository {
 
   async getMarkingsForDate(companyId: string, date: string) {
     const [rows]: any = await pool.query(`
-      SELECT collaborator_id, details, timestamp
+      SELECT collaborator_id, timestamp
       FROM attendance_records
       WHERE company_id = ? AND DATE(timestamp) = ?
     `, [companyId, date]);
@@ -73,7 +73,6 @@ export class ReportsRepository {
         a.id, 
         a.timestamp, 
         a.type, 
-        a.details,
         c.first_name, 
         c.last_name, 
         c.identification, 
