@@ -4,7 +4,8 @@ export class ReportsService {
   private repository = new ReportsRepository();
 
   async getDashboardStats(companyId: string, userId: string, range: string = '7d') {
-    const today = new Date().toISOString().split('T')[0];
+    // Obtener fecha actual en zona horaria regional (Colombia)
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
     
     // Calcular rango de fechas para la gráfica
     const startDate = new Date();
@@ -38,13 +39,15 @@ export class ReportsService {
     // Agrupar marcajes por colaborador
     const markingsByCollab: Record<string, number> = {};
     let zoneAlertsCount = 0;
+    let validMarkingsCount = 0;
 
     markingsToday.forEach((m: any) => {
       markingsByCollab[m.collaborator_id] = (markingsByCollab[m.collaborator_id] || 0) + 1;
       
-      // Verificar alertas de zona (asumiendo que details tiene info de validación)
-      const details = typeof m.details === 'string' ? JSON.parse(m.details) : m.details;
-      if (details?.validation?.zone_match === false) {
+      // Verificar alertas de zona usando la columna directa de la BD
+      if (m.is_valid_zone === 1) {
+        validMarkingsCount++;
+      } else {
         zoneAlertsCount++;
       }
     });
@@ -128,7 +131,7 @@ export class ReportsService {
     return { 
       totalWorkforce,
       complianceRate,
-      todayMarkings: markingsToday.length,
+      todayMarkings: validMarkingsCount,
       zoneAlerts: zoneAlertsCount,
       chartData, 
       pieData, 
