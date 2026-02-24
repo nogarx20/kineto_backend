@@ -101,7 +101,8 @@ export class ReportsService {
         time: new Date(l.timestamp).toLocaleString('es-CO', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
         type: l.type,
         valid: l.is_valid_zone === 1,
-        zoneName: l.zone_name || 'Ubicación Desconocida'
+        zoneName: l.zone_name || 'Ubicación Desconocida',
+        shiftName: l.shift_name
       };
     });
 
