@@ -124,45 +124,52 @@ export class ReportsService {
     // 4. Formatear Logs de Seguridad (Humanización)
     const securityLogs = securityLogsRaw.map((l: any) => {
       const detailsObj = typeof l.details === 'string' ? JSON.parse(l.details) : l.details;
-      let humanEntity = l.entity;
-      let humanDetails = 'Evento registrado';
-
-      // Mapeo de Entidades
+      
+      // Mapeo de Entidades (Tablas -> Menús)
       const entityMap: Record<string, string> = {
           'users': 'Gestión de Usuarios',
           'collaborators': 'Colaboradores',
           'contracts': 'Contratos',
           'shifts': 'Turnos',
           'companies': 'Configuración',
-          'auth': 'Acceso'
+          'auth': 'Acceso',
+          'biometrics': 'Biometría',
+          'novelties': 'Novedades',
+          'schedules': 'Programación',
+          'cost_centers': 'Centros de Costo',
+          'positions': 'Cargos',
+          'roles': 'Roles y Permisos'
       };
-      if (entityMap[l.entity]) humanEntity = entityMap[l.entity];
+      
+      const humanEntity = entityMap[l.entity] || l.entity;
+      let humanAction = l.action;
+      let humanDetails = 'Evento registrado';
 
-      // Mapeo de Acciones y Detalles
+      // Mapeo de Acciones
       switch (l.action) {
           case 'LOGIN':
-              humanEntity = 'Inicio de Sesión';
+              humanAction = 'Inicio de Sesión';
               humanDetails = 'Acceso autorizado al sistema';
               break;
           case 'LOGOUT':
-              humanEntity = 'Cierre de Sesión';
+              humanAction = 'Cierre de Sesión';
               humanDetails = 'Desconexión de usuario';
               break;
           case 'LOGIN_FAILED':
-              humanEntity = 'Intento de Acceso';
+              humanAction = 'Acceso Fallido';
               humanDetails = 'Credenciales incorrectas';
               break;
           case 'CREATE':
-              humanEntity = `Alta en ${entityMap[l.entity] || l.entity}`;
-              humanDetails = l.entity === 'collaborators' ? `Nuevo ingreso: ${detailsObj?.first_name || ''} ${detailsObj?.last_name || ''}` : 'Creación de nuevo registro';
+              humanAction = 'Creación';
+              humanDetails = l.entity === 'collaborators' ? `Nuevo ingreso: ${detailsObj?.first_name || ''} ${detailsObj?.last_name || ''}` : 'Registro creado exitosamente';
               break;
           case 'UPDATE':
-              humanEntity = `Edición en ${entityMap[l.entity] || l.entity}`;
-              humanDetails = detailsObj?.changes ? `Cambios en: ${Object.keys(detailsObj.changes).join(', ')}` : 'Actualización de información';
+              humanAction = 'Actualización';
+              humanDetails = detailsObj?.changes ? `Modificado: ${Object.keys(detailsObj.changes).join(', ')}` : 'Información actualizada';
               break;
           case 'DELETE':
-              humanEntity = `Baja en ${entityMap[l.entity] || l.entity}`;
-              humanDetails = 'Eliminación de registro';
+              humanAction = 'Eliminación';
+              humanDetails = 'Registro eliminado permanentemente';
               break;
           default:
               humanDetails = typeof detailsObj === 'object' ? 'Detalles técnicos disponibles' : String(detailsObj || '');
@@ -170,7 +177,7 @@ export class ReportsService {
 
       return {
         id: l.id,
-        action: l.action,
+        action: humanAction,
         entity: humanEntity,
         details: humanDetails,
         time: new Date(l.createdAt).toLocaleString('es-CO', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
