@@ -132,7 +132,7 @@ export class ReportsService {
           'contracts': 'Contratos',
           'shifts': 'Turnos',
           'marking_zones': 'Geocercas',
-          'companies': 'Configuración',
+          'companies': 'Compañia',
           'auth': 'Acceso',
           'biometrics': 'Biometría',
           'novelties': 'Novedades',
@@ -142,6 +142,45 @@ export class ReportsService {
           'roles': 'Roles y Permisos'
       };
       
+      // Mapeo de Campos (Diccionario de traducción)
+      const fieldMap: Record<string, string> = {
+          'first_name': 'Nombres',
+          'last_name': 'Apellidos',
+          'email': 'Correo',
+          'phone': 'Teléfono',
+          'address': 'Dirección',
+          'identification': 'Identificación',
+          'password': 'Contraseña',
+          'role_ids': 'Roles',
+          'is_active': 'Estado',
+          'is_locked': 'Bloqueo',
+          'position_name': 'Cargo',
+          'cost_center_id': 'Centro Costos',
+          'salary': 'Salario',
+          'start_date': 'Fecha Inicio',
+          'end_date': 'Fecha Fin',
+          'name': 'Nombre',
+          'code': 'Código',
+          'description': 'Descripción',
+          'zone_type': 'Tipo Zona',
+          'radius': 'Radio',
+          'lat': 'Latitud',
+          'lng': 'Longitud',
+          'is_automatic_marking': 'Marcaje Auto',
+          'shift_type': 'Tipo Turno',
+          'start_time': 'Hora Inicio',
+          'end_time': 'Hora Fin',
+          'entry_start_buffer': 'Margen Entrada',
+          'exit_end_buffer': 'Margen Salida',
+          'lunch_start': 'Inicio Almuerzo',
+          'lunch_end': 'Fin Almuerzo',
+          'marking_zones_json': 'Geocercas',
+          'pin': 'PIN',
+          'contract_type': 'Tipo Contrato',
+          'weekly_hours': 'Horas Semanales',
+          'working_days': 'Días Laborales'
+      };
+
       const humanEntity = entityMap[l.entity] || l.entity;
       let humanAction = l.action;
       let humanDetails = 'Evento registrado';
@@ -166,7 +205,12 @@ export class ReportsService {
               break;
           case 'UPDATE':
               humanAction = 'Actualización';
-              humanDetails = detailsObj?.changes ? `Modificado: ${Object.keys(detailsObj.changes).join(', ')}` : 'Información actualizada';
+              if (detailsObj?.changes) {
+                  const changedFields = Object.keys(detailsObj.changes).map(k => fieldMap[k] || k).join(', ');
+                  humanDetails = `Modificado: ${changedFields}`;
+              } else {
+                  humanDetails = 'Información actualizada';
+              }
               break;
           case 'DELETE':
               humanAction = 'Eliminación';
