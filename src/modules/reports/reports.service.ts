@@ -91,7 +91,7 @@ export class ReportsService {
     }
 
     // 3. Formatear Actividad Reciente (Con Deduplicación)
-    const uniqueActivity = [];
+    const uniqueActivity: any[] = [];
     
     for (const act of recentActivityRaw) {
       // Algoritmo de deduplicación:
