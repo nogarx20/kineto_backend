@@ -2,7 +2,7 @@ import pool from '../../config/database';
 
 export class ReportsRepository {
   async getComplianceStats(companyId: string) {
-    // Usamos pool.query en lugar de execute para evitar problemas de compatibilidad con sentencias preparadas del servidor
+    // Mantener compatibilidad si se usa en otros lados, o actualizar según necesidad
     const [rows]: any = await pool.query(`
       SELECT 
         c.id, 
@@ -22,6 +22,85 @@ export class ReportsRepository {
     return rows;
   }
 
+  async getTotalActiveWorkforce(companyId: string) {
+    const [rows]: any = await pool.query(`
+      SELECT COUNT(DISTINCT c.id) as total
+      FROM collaborators c
+      INNER JOIN contracts ct ON c.id = ct.collaborator_id
+      WHERE c.company_id = ? 
+      AND c.is_active = 1 
+      AND ct.status = 'Activo'
+      AND CURDATE() BETWEEN ct.start_date AND COALESCE(ct.end_date, '9999-12-31')
+    `, [companyId]);
+    return rows[0]?.total || 0;
+  }
+
+  async getSchedulesForDate(companyId: string, date: string) {
+    const [rows]: any = await pool.query(`
+      SELECT s.collaborator_id, sh.shift_type
+      FROM schedules s
+      INNER JOIN shifts sh ON s.shift_id = sh.id
+      WHERE s.company_id = ? AND s.date = ?
+    `, [companyId, date]);
+    return rows;
+  }
+
+  async getMarkingsForDate(companyId: string, date: string) {
+    const [rows]: any = await pool.query(`
+      SELECT collaborator_id, details, timestamp
+      FROM attendance_records
+      WHERE company_id = ? AND DATE(timestamp) = ?
+    `, [companyId, date]);
+    return rows;
+  }
+
+  async getTrendData(companyId: string, startDate: string, endDate: string) {
+     const [rows]: any = await pool.query(`
+        SELECT 
+            DATE(timestamp) as date,
+            COUNT(*) as ejecutado
+        FROM attendance_records
+        WHERE company_id = ? AND DATE(timestamp) BETWEEN ? AND ?
+        GROUP BY DATE(timestamp)
+        ORDER BY date ASC
+     `, [companyId, startDate, endDate]);
+     return rows;
+  }
+
+  async getEnrichedRecentActivity(companyId: string, limit: number) {
+    const [rows]: any = await pool.query(`
+      SELECT 
+        a.id, 
+        a.timestamp, 
+        a.type, 
+        a.details,
+        c.first_name, 
+        c.last_name, 
+        c.identification, 
+        c.photo,
+        cc.name as cost_center
+      FROM attendance_records a
+      INNER JOIN collaborators c ON a.collaborator_id = c.id
+      LEFT JOIN cost_centers cc ON c.cost_center_id = cc.id
+      WHERE a.company_id = ?
+      ORDER BY a.timestamp DESC
+      LIMIT ?
+    `, [companyId, limit]);
+    return rows;
+  }
+
+  async getUserSecurityLogs(companyId: string, userId: string, limit: number) {
+      const [rows]: any = await pool.query(`
+        SELECT id, action, entity, details, createdAt
+        FROM system_logs
+        WHERE company_id = ? AND user_id = ?
+        AND action IN ('CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT')
+        ORDER BY createdAt DESC
+        LIMIT ?
+      `, [companyId, userId, limit]);
+      return rows;
+  }
+
   async getAttendanceDistribution(companyId: string) {
     const [rows]: any = await pool.query(`
       SELECT 
@@ -37,8 +116,8 @@ export class ReportsRepository {
   async getTodayMarkingsCount(companyId: string) {
     const [rows]: any = await pool.query(`
       SELECT COUNT(*) as count 
-      FROM system_logs 
-      WHERE company_id = ? AND action = 'MARK_ATTENDANCE' AND DATE(createdAt) = CURDATE()
+      FROM attendance_records 
+      WHERE company_id = ? AND DATE(timestamp) = CURDATE()
     `, [companyId]);
     return rows[0]?.count || 0;
   }
@@ -55,8 +134,6 @@ export class ReportsRepository {
   }
 
   async getRecentAttendanceLogs(companyId: string, limit: number = 5) {
-    // pool.execute falla en muchas versiones de MySQL al usar placeholders (?) en la cláusula LIMIT.
-    // pool.query es la solución estándar para este escenario.
     const [rows]: any = await pool.query(`
       SELECT id, action, entity, entity_id, ip_address, details, createdAt 
       FROM system_logs 
