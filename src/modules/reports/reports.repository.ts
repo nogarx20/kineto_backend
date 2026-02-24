@@ -81,12 +81,15 @@ export class ReportsRepository {
         c.identification, 
         c.photo,
         cc.name as cost_center,
-        mz.name as zone_name
+        mz.name as zone_name,
+        sh.name as shift_name
       FROM attendance_records a
       INNER JOIN collaborators c ON a.collaborator_id = c.id
       LEFT JOIN contracts con ON c.id = con.collaborator_id AND con.status = 'Activo'
       LEFT JOIN cost_centers cc ON con.cost_center_id = cc.id
       LEFT JOIN marking_zones mz ON a.marking_zone_id = mz.id
+      LEFT JOIN schedules s ON a.schedule_id = s.id
+      LEFT JOIN shifts sh ON s.shift_id = sh.id
       WHERE a.company_id = ?
       ORDER BY a.timestamp DESC
       LIMIT ?
