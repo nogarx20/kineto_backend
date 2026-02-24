@@ -44,8 +44,8 @@ export class ReportsService {
     markingsToday.forEach((m: any) => {
       markingsByCollab[m.collaborator_id] = (markingsByCollab[m.collaborator_id] || 0) + 1;
       
-      // Verificar alertas de zona usando la columna directa de la BD
-      if (m.is_valid_zone === 1) {
+      // Verificar alertas: Problema con zona (0) O problema con turno (null)
+      if (m.is_valid_zone === 1 && m.schedule_id) {
         validMarkingsCount++;
       } else {
         zoneAlertsCount++;
@@ -92,7 +92,6 @@ export class ReportsService {
 
     // 3. Formatear Actividad Reciente
     const recentActivity = recentActivityRaw.map((l: any) => {
-      const details = typeof l.details === 'string' ? JSON.parse(l.details) : l.details;
       return {
         id: l.id,
         name: `${l.first_name} ${l.last_name}`,
@@ -101,7 +100,8 @@ export class ReportsService {
         costCenter: l.cost_center || 'N/A',
         time: new Date(l.timestamp).toLocaleString('es-CO', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
         type: l.type,
-        valid: details?.validation?.zone_match !== false // True si es undefined (legacy) o true
+        valid: l.is_valid_zone === 1,
+        zoneName: l.zone_name || 'Ubicación Desconocida'
       };
     });
 
