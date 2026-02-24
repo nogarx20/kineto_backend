@@ -49,7 +49,7 @@ export class ReportsRepository {
 
   async getMarkingsForDate(companyId: string, date: string) {
     const [rows]: any = await pool.query(`
-      SELECT collaborator_id, timestamp, is_valid_zone
+      SELECT collaborator_id, timestamp, is_valid_zone, schedule_id
       FROM attendance_records
       WHERE company_id = ? AND DATE(timestamp) = ?
     `, [companyId, date]);
@@ -75,15 +75,18 @@ export class ReportsRepository {
         a.id, 
         a.timestamp, 
         a.type, 
+        a.is_valid_zone,
         c.first_name, 
         c.last_name, 
         c.identification, 
         c.photo,
-        cc.name   as cost_center
+        cc.name as cost_center,
+        mz.name as zone_name
       FROM attendance_records a
       INNER JOIN collaborators c ON a.collaborator_id = c.id
       LEFT JOIN contracts con ON c.id = con.collaborator_id AND con.status = 'Activo'
       LEFT JOIN cost_centers cc ON con.cost_center_id = cc.id
+      LEFT JOIN marking_zones mz ON a.marking_zone_id = mz.id
       WHERE a.company_id = ?
       ORDER BY a.timestamp DESC
       LIMIT ?
