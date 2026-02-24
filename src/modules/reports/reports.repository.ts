@@ -28,7 +28,9 @@ export class ReportsRepository {
       FROM collaborators c
       INNER JOIN contracts ct ON c.id = ct.collaborator_id
       WHERE c.company_id = ? 
-      AND c.is_active = 1 
+      AND c.onDelete = 0
+      AND c.is_active = 1
+      AND ct.onDelete = 0
       AND ct.status = 'Activo'
       AND CURDATE() BETWEEN ct.start_date AND COALESCE(ct.end_date, '9999-12-31')
     `, [companyId]);
@@ -47,7 +49,7 @@ export class ReportsRepository {
 
   async getMarkingsForDate(companyId: string, date: string) {
     const [rows]: any = await pool.query(`
-      SELECT collaborator_id, timestamp
+      SELECT collaborator_id, timestamp, is_valid_zone
       FROM attendance_records
       WHERE company_id = ? AND DATE(timestamp) = ?
     `, [companyId, date]);
@@ -77,7 +79,7 @@ export class ReportsRepository {
         c.last_name, 
         c.identification, 
         c.photo,
-        cc.name as cost_center
+        cc.name   as cost_center
       FROM attendance_records a
       INNER JOIN collaborators c ON a.collaborator_id = c.id
       LEFT JOIN contracts con ON c.id = con.collaborator_id AND con.status = 'Activo'
