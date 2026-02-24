@@ -9,7 +9,7 @@ const controller = new ReportsController();
 
 router.use(authMiddleware, tenantMiddleware);
 
-router.get('/dashboard', rbacMiddleware('dashboard.view'), controller.getStats);
-router.get('/audit', rbacMiddleware('security.view'), controller.getAuditLogs); // Logs de auditoría suelen ser de seguridad
+router.get('/stats', rbacMiddleware('dashboard.view'), controller.getStats);
+router.get('/audit-logs', rbacMiddleware('security.view'), controller.getAuditLogs);
 
 export default router;
