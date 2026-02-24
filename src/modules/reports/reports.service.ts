@@ -131,6 +131,7 @@ export class ReportsService {
           'collaborators': 'Colaboradores',
           'contracts': 'Contratos',
           'shifts': 'Turnos',
+          'marking_zones': 'Geocercas',
           'companies': 'Configuración',
           'auth': 'Acceso',
           'biometrics': 'Biometría',
