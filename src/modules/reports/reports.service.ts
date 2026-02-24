@@ -27,7 +27,7 @@ export class ReportsService {
       this.repository.getSchedulesForDate(companyId, today),
       this.repository.getMarkingsForDate(companyId, today),
       this.repository.getTrendData(companyId, startDateStr, today),
-      this.repository.getEnrichedRecentActivity(companyId, 20), // Traemos más para filtrar en front si es necesario
+      this.repository.getEnrichedRecentActivity(companyId, 100), // Traemos más para filtrar duplicados
       this.repository.getUserSecurityLogs(companyId, userId, 20),
       this.repository.getAttendanceDistribution(companyId)
     ]);
@@ -90,8 +90,23 @@ export class ReportsService {
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
-    // 3. Formatear Actividad Reciente
-    const recentActivity = recentActivityRaw.map((l: any) => {
+    // 3. Formatear Actividad Reciente (Con Deduplicación)
+    const uniqueActivity = [];
+    
+    for (const act of recentActivityRaw) {
+      // Algoritmo de deduplicación:
+      // Ignorar si existe un registro del mismo colaborador, mismo tipo (IN/OUT) y diferencia < 1 minuto
+      const isDuplicate = uniqueActivity.some(existing => 
+        existing.identification === act.identification && 
+        existing.type === act.type && 
+        Math.abs(new Date(existing.timestamp).getTime() - new Date(act.timestamp).getTime()) < 60000
+      );
+
+      if (!isDuplicate) uniqueActivity.push(act);
+      if (uniqueActivity.length >= 20) break; // Limitar a 20 visuales
+    }
+
+    const recentActivity = uniqueActivity.map((l: any) => {
       return {
         id: l.id,
         name: `${l.first_name} ${l.last_name}`,
@@ -106,14 +121,61 @@ export class ReportsService {
       };
     });
 
-    // 4. Formatear Logs de Seguridad
-    const securityLogs = securityLogsRaw.map((l: any) => ({
-      id: l.id,
-      action: l.action,
-      entity: l.entity,
-      details: typeof l.details === 'string' ? JSON.parse(l.details) : l.details,
-      time: new Date(l.createdAt).toLocaleString('es-CO')
-    }));
+    // 4. Formatear Logs de Seguridad (Humanización)
+    const securityLogs = securityLogsRaw.map((l: any) => {
+      const detailsObj = typeof l.details === 'string' ? JSON.parse(l.details) : l.details;
+      let humanEntity = l.entity;
+      let humanDetails = 'Evento registrado';
+
+      // Mapeo de Entidades
+      const entityMap: Record<string, string> = {
+          'users': 'Gestión de Usuarios',
+          'collaborators': 'Colaboradores',
+          'contracts': 'Contratos',
+          'shifts': 'Turnos',
+          'companies': 'Configuración',
+          'auth': 'Acceso'
+      };
+      if (entityMap[l.entity]) humanEntity = entityMap[l.entity];
+
+      // Mapeo de Acciones y Detalles
+      switch (l.action) {
+          case 'LOGIN':
+              humanEntity = 'Inicio de Sesión';
+              humanDetails = 'Acceso autorizado al sistema';
+              break;
+          case 'LOGOUT':
+              humanEntity = 'Cierre de Sesión';
+              humanDetails = 'Desconexión de usuario';
+              break;
+          case 'LOGIN_FAILED':
+              humanEntity = 'Intento de Acceso';
+              humanDetails = 'Credenciales incorrectas';
+              break;
+          case 'CREATE':
+              humanEntity = `Alta en ${entityMap[l.entity] || l.entity}`;
+              humanDetails = l.entity === 'collaborators' ? `Nuevo ingreso: ${detailsObj?.first_name || ''} ${detailsObj?.last_name || ''}` : 'Creación de nuevo registro';
+              break;
+          case 'UPDATE':
+              humanEntity = `Edición en ${entityMap[l.entity] || l.entity}`;
+              humanDetails = detailsObj?.changes ? `Cambios en: ${Object.keys(detailsObj.changes).join(', ')}` : 'Actualización de información';
+              break;
+          case 'DELETE':
+              humanEntity = `Baja en ${entityMap[l.entity] || l.entity}`;
+              humanDetails = 'Eliminación de registro';
+              break;
+          default:
+              humanDetails = typeof detailsObj === 'object' ? 'Detalles técnicos disponibles' : String(detailsObj || '');
+      }
+
+      return {
+        id: l.id,
+        action: l.action,
+        entity: humanEntity,
+        details: humanDetails,
+        time: new Date(l.createdAt).toLocaleString('es-CO', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+      };
+    });
 
     // 5. Pie Data (Distribución)
     const colorMap: any = {
