@@ -32,8 +32,8 @@ export class RoleController {
       const user = (req as any).user;
       const id = generateUUID();
       
-      await pool.execute('INSERT INTO roles (id, company_id, name, description, onDelete) VALUES (?, ?, ?, ?, 0)', [
-        id, user.company_id, body.name, body.description || null
+      await pool.execute('INSERT INTO roles (id, company_id, name, description, is_active, onDelete) VALUES (?, ?, ?, ?, ?, 0)', [
+        id, user.company_id, body.name, body.description || null, body.is_active !== undefined ? body.is_active : true
       ]);
 
       await logAudit(req, 'CREATE', 'roles', id, body);
@@ -50,14 +50,15 @@ export class RoleController {
       const [oldRows]: any = await pool.execute('SELECT * FROM roles WHERE id = ?', [id]);
       const oldData = oldRows[0];
       
-      await pool.execute('UPDATE roles SET name = ?, description = ? WHERE id = ? AND company_id = ?', [
-        body.name, body.description, id, user.company_id
+      await pool.execute('UPDATE roles SET name = ?, description = ?, is_active = ? WHERE id = ? AND company_id = ?', [
+        body.name, body.description, body.is_active, id, user.company_id
       ]);
 
       const changes: any = {};
       if (oldData) {
         if (oldData.name !== body.name) changes.name = { from: oldData.name, to: body.name };
         if (oldData.description !== body.description) changes.description = { from: oldData.description, to: body.description };
+        if (oldData.is_active !== body.is_active) changes.is_active = { from: oldData.is_active, to: body.is_active };
       }
 
       await logAudit(req, 'UPDATE', 'roles', id, { changes, full_payload: body });
