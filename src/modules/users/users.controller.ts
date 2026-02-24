@@ -59,11 +59,11 @@ export class UserController {
 
       await pool.execute(`
         UPDATE users 
-        SET email = ?, first_name = ?, last_name = ?, collaborator_id = ?, is_locked = ? 
+        SET email = ?, first_name = ?, last_name = ?, collaborator_id = ?, is_locked = ?, photo = ?
         WHERE id = ? AND company_id = ?
       `, [
         body.email, body.first_name, body.last_name, 
-        body.collaborator_id || null, body.is_locked ? 1 : 0, 
+        body.collaborator_id || null, body.is_locked ? 1 : 0, body.photo || null,
         id, user.company_id
       ]);
 
@@ -118,7 +118,7 @@ export class UserController {
         return (res as any).status(400).json({ 
           error: 'Restricción de Integridad Referencial',
           message: `No es posible eliminar a ${targetUser.first_name} ${targetUser.last_name} porque el sistema detectó dependencias activas que deben preservarse para mantener la trazabilidad. Las referencias encontradas son:\n\n` + 
-                   activeReferences.map(ref => `• ${ref}`).join('\n') + 
+                   activeReferences.map(ref => `• `).join('\n') + 
                    `\n\nLe recomendamos marcar la cuenta como "Bloqueada" en lugar de eliminarla para suspender el acceso sin afectar la integridad de los datos históricos.`
         });
       }
@@ -158,31 +158,9 @@ export class UserController {
     try {
       const user = (req as any).user;
       const { search } = (req as any).query;
-
-      const [rows]: any = await pool.execute(`
-        SELECT u.*, 
-        (
-          SELECT JSON_ARRAYAGG(JSON_OBJECT('id', r.id, 'name', r.name, 'is_active', r.is_active))
-          FROM user_roles ur
-          JOIN roles r ON ur.role_id = r.id
-          WHERE ur.user_id = u.id
-        ) as roles
-        FROM users u WHERE u.company_id = ? AND u.onDelete = 0
-      `, [user.company_id]);
-      
-      const usersWithRoles = rows.map((u: any) => {
-        const roles = typeof u.roles === 'string' ? JSON.parse(u.roles) : (u.roles || []);
-        return { 
-          ...u, 
-          roles: roles.map((r: any) => ({ ...r, is_active: !!r.is_active })),
-          role_ids: roles.map((r: any) => r.id) 
-        };
-      });
-      
-      // Registrar evento de auditoría de consulta con filtro
+      const users = await userService.getUsers(user.company_id);
       await logAudit(req, 'LIST', 'users', undefined, { filter: search || 'all' });
-
-      (res as any).json(usersWithRoles);
+      (res as any).json(users);
     } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
   }
 
