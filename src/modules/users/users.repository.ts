@@ -22,24 +22,24 @@ export class UserRepository {
 
   async findById(companyId: string, id: string) {
     const [rows]: any = await pool.execute(
-      'SELECT id, company_id, email, first_name, last_name, is_active, is_locked, failed_attempts, createdAt FROM users WHERE company_id = ? AND id = ? AND onDelete = 0',
+      'SELECT id, company_id, email, first_name, last_name, is_active, is_locked, failed_attempts, createdAt, photo FROM users WHERE company_id = ? AND id = ? AND onDelete = 0',
       [companyId, id]
     );
     return rows[0];
   }
 
   async create(user: any) {
-    const { id, company_id, email, password, first_name, last_name } = user;
+    const { id, company_id, email, password, first_name, last_name, photo } = user;
     await pool.execute(
-      'INSERT INTO users (id, company_id, email, password, first_name, last_name, onDelete) VALUES (?, ?, ?, ?, ?, ?, 0)',
-      [id, company_id, email, password, first_name, last_name]
+      'INSERT INTO users (id, company_id, email, password, first_name, last_name, photo, onDelete) VALUES (?, ?, ?, ?, ?, ?, ?, 0)',
++      [id, company_id, email, password, first_name, last_name, photo || null]
     );
     return id;
   }
 
   async listByCompany(companyId: string) {
     const [rows]: any = await pool.execute(`
-      SELECT u.id, u.email, u.first_name, u.last_name, u.is_active, u.is_locked, u.failed_attempts, u.createdAt,
+      SELECT u.id, u.email, u.first_name, u.last_name, u.is_active, u.is_locked, u.failed_attempts, u.createdAt, u.photo,
       (
         SELECT JSON_ARRAYAGG(JSON_OBJECT('id', r.id, 'name', r.name, 'is_active', r.is_active))
         FROM user_roles ur
