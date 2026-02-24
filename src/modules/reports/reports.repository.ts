@@ -80,7 +80,8 @@ export class ReportsRepository {
         cc.name as cost_center
       FROM attendance_records a
       INNER JOIN collaborators c ON a.collaborator_id = c.id
-      LEFT JOIN cost_centers cc ON c.cost_center_id = cc.id
+      LEFT JOIN contracts con ON c.id = con.collaborator_id AND con.status = 'Activo'
+      LEFT JOIN cost_centers cc ON con.cost_center_id = cc.id
       WHERE a.company_id = ?
       ORDER BY a.timestamp DESC
       LIMIT ?
