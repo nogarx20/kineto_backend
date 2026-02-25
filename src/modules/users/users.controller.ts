@@ -136,19 +136,43 @@ export class UserController {
   async getLogs(req: Request, res: Response) {
     try {
       const { id } = (req as any).params;
+      const { limit = 20, offset = 0, action, entity, startDate, endDate } = (req as any).query;
       const user = (req as any).user;
+
+      let baseQuery = `FROM system_logs WHERE user_id = ? AND (company_id = ? OR company_id IS NULL)`;
+      const queryParams: any[] = [id, user.company_id];
+
+      if (action) {
+        baseQuery += ` AND action = ?`;
+        queryParams.push(action);
+      }
+      if (entity) {
+        baseQuery += ` AND entity = ?`;
+        queryParams.push(entity);
+      }
+      if (startDate) {
+        baseQuery += ` AND DATE(createdAt) >= ?`;
+        queryParams.push(startDate);
+      }
+      if (endDate) {
+        baseQuery += ` AND DATE(createdAt) <= ?`;
+        queryParams.push(endDate);
+      }
+
+      const [countResult]: any = await pool.execute(`SELECT COUNT(*) as total ${baseQuery}`, queryParams);
+      const total = countResult[0].total;
+
       const [rows]: any = await pool.execute(`
-        SELECT * FROM system_logs 
-        WHERE user_id = ? AND (company_id = ? OR company_id IS NULL)
-        ORDER BY createdAt DESC LIMIT 100
-      `, [id, user.company_id]);
+        SELECT * ${baseQuery}
+        ORDER BY createdAt DESC LIMIT ${Number(limit)} OFFSET ${Number(offset)}
+      `, queryParams);
       
       const parsedRows = rows.map((r: any) => ({
         ...r,
         details: typeof r.details === 'string' ? JSON.parse(r.details) : r.details
       }));
 
-      (res as any).json(parsedRows);
+      (res as any).json({ logs: parsedRows, total });
     } catch (err: any) {
       (res as any).status(500).json({ error: err.message });
     }
