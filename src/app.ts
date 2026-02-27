@@ -11,6 +11,7 @@ import reportsRoutes from './modules/reports/reports.routes';
 import noveltyRoutes from './modules/novelties/novelties.routes';
 import fileRoutes from './modules/files/files.routes';
 import biometricRoutes from './modules/biometrics/biometrics.routes';
+import holidaysRoutes from './modules/holidays/holidays.routes';
 
 const app = express();
 
@@ -31,6 +32,7 @@ routerV1.use('/reports', reportsRoutes);
 routerV1.use('/novelties', noveltyRoutes);
 routerV1.use('/files', fileRoutes);
 routerV1.use('/biometrics', biometricRoutes);
+routerV1.use('/holidays', holidaysRoutes);
 
 app.use('/api/v1', routerV1);
 
