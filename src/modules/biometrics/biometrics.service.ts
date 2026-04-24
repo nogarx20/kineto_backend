@@ -71,18 +71,59 @@ export class BiometricService {
 
     const currentShift = schedule.length > 0 ? schedule[0] : null;
 
-    // --- Nueva Lógica Geográfica Relacional ---
+    // --- Lógica de Ventanas de Tiempo y Tipo de Marcaje ---
+    let timeMatch = false;
+    let detectedType: 'IN' | 'OUT' | 'N/A' = 'N/A';
+    let timeFeedback = "Marcaje fuera de horario";
+
+    if (currentShift && currentShift.shift_type !== 'Descanso') {
+        const now = new Date();
+        const checkTime = (targetTime: string, beforeMins: number, afterMins: number) => {
+            if (!targetTime) return false;
+            const [h, m] = targetTime.split(':').map(Number);
+            const target = new Date(now);
+            target.setHours(h, m, 0, 0);
+            
+            const start = new Date(target.getTime() - (beforeMins * 60000));
+            const end = new Date(target.getTime() + (afterMins * 60000));
+            return now >= start && now <= end;
+        };
+
+        // Validar contra las 4 posibles ventanas
+        if (checkTime(currentShift.start_time, currentShift.entry_start_buffer, currentShift.entry_end_buffer)) {
+            detectedType = 'IN';
+            timeMatch = true;
+            timeFeedback = "Entrada Principal";
+        } else if (checkTime(currentShift.end_time, currentShift.exit_start_buffer, currentShift.exit_end_buffer)) {
+            detectedType = 'OUT';
+            timeMatch = true;
+            timeFeedback = "Salida Principal";
+        } else if (currentShift.shift_type === 'Partido') {
+            if (checkTime(currentShift.start_time_2, currentShift.entry_start_buffer_2, currentShift.entry_end_buffer_2)) {
+                detectedType = 'IN';
+                timeMatch = true;
+                timeFeedback = "Entrada Tramo 2";
+            } else if (checkTime(currentShift.end_time_2, currentShift.exit_start_buffer_2, currentShift.exit_end_buffer_2)) {
+                detectedType = 'OUT';
+                timeMatch = true;
+                timeFeedback = "Salida Final";
+            }
+        }
+    }
+
+    // --- Lógica Geográfica Relacional ---
     let zoneMatch = false;
     let geofenceResults: any[] = [];
     let matchedZoneName = null;
 
-    if (currentShift && coords && coords.lat !== 0) {
+    // Solo validamos geocerca si hubo match de tiempo o es un marcaje manual permitido
+    if (currentShift && coords && coords.lat !== 0 && coords.lat !== undefined) {
         const [zones]: any = await pool.query(`
             SELECT mz.name, mz.lat, mz.lng, mz.radius 
             FROM marking_zones mz
             JOIN shift_marking_zones smz ON mz.id = smz.marking_zone_id
             WHERE smz.shift_id = ? AND mz.onDelete = 0 AND mz.is_active = 1
-        `, [currentShift.id]);
+        `, [currentShift.shift_id]);
 
         geofenceResults = zones.map((z: any) => {
             const dist = this.calculateHaversineDistance(coords.lat, coords.lng, Number(z.lat), Number(z.lng));
@@ -105,7 +146,8 @@ export class BiometricService {
         },
         confidence: (1 - minDistance).toFixed(4), 
         match: true,
-        type: currentShift ? markingResult.type : 'N/A', // Forzar N/A si no hay turno
+        type: detectedType, 
+        time_feedback: timeFeedback,
         shift: currentShift ? {
             name: currentShift.name,
             prefix: currentShift.prefix,
@@ -114,7 +156,7 @@ export class BiometricService {
             shift_type: currentShift.shift_type
         } : null,
         validation: {
-            shift_match: !!currentShift,
+            shift_match: timeMatch,
             zone_match: currentShift ? zoneMatch : false
         },
         geofence_results: geofenceResults,
