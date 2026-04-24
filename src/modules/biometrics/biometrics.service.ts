@@ -82,7 +82,7 @@ export class BiometricService {
             FROM marking_zones mz
             JOIN shift_marking_zones smz ON mz.id = smz.marking_zone_id
             WHERE smz.shift_id = ? AND mz.onDelete = 0 AND mz.is_active = 1
-        `, [currentShift.shift_id]);
+        `, [currentShift.id]);
 
         geofenceResults = zones.map((z: any) => {
             const dist = this.calculateHaversineDistance(coords.lat, coords.lng, Number(z.lat), Number(z.lng));
@@ -115,10 +115,10 @@ export class BiometricService {
         } : null,
         validation: {
             shift_match: !!currentShift,
-            zone_match: (markingResult as any).is_in_zone
+            zone_match: currentShift ? zoneMatch : false
         },
-        geofence_results: (markingResult as any).geofence_results || [],
-        zone_name: (markingResult as any).zone_name || ((markingResult as any).geofence_results?.length > 0 ? 'Fuera de Cobertura' : 'Sin Zona'),
+        geofence_results: geofenceResults,
+        zone_name: matchedZoneName || (geofenceResults.length > 0 ? 'Fuera de Cobertura' : 'Sin Zona'),
         lat: coords?.lat,
         lng: coords?.lng
     };
