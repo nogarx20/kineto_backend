@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { ShiftService } from './shifts.service';
 import { logAudit } from '../../middlewares/audit.middleware';
 import pool from '../../config/database';
+import { generateUUID } from '../../utils/uuid';
 
 const service = new ShiftService();
 
@@ -155,20 +156,26 @@ export class ShiftController {
             start_time = ?, end_time = ?, start_time_2 = ?, end_time_2 = ?,
             entry_start_buffer = ?, entry_end_buffer = ?, exit_start_buffer = ?, exit_end_buffer = ?,
             entry_start_buffer_2 = ?, entry_end_buffer_2 = ?, exit_start_buffer_2 = ?, exit_end_buffer_2 = ?,
-            rounding = ?, lunch_start = ?, lunch_end = ?, marking_zone_id = ?, is_active = ?,
-            is_automatic_marking = ?, marking_zones_json = ?
+            rounding = ?, lunch_start = ?, lunch_end = ?, is_active = ?,
+            is_automatic_marking = ?
         WHERE id = ? AND company_id = ?
       `, [
         body.name, body.prefix, body.shift_type || 'Simple',
         body.start_time, body.end_time, body.start_time_2 || null, body.end_time_2 || null,
         body.entry_start_buffer || 15, body.entry_end_buffer || 15, body.exit_start_buffer || 15, body.exit_end_buffer || 15,
         body.entry_start_buffer_2 || 15, body.entry_end_buffer_2 || 15, body.exit_start_buffer_2 || 15, body.exit_end_buffer_2 || 15,
-        body.rounding || 0, body.lunch_start || null, body.lunch_end || null, body.marking_zone_id || null,
+        body.rounding || 0, body.lunch_start || null, body.lunch_end || null,
         body.is_active === undefined ? oldData.is_active : (body.is_active ? 1 : 0),
         body.is_automatic_marking ? 1 : 0,
-        body.marking_zones_json ? JSON.stringify(body.marking_zones_json) : null,
         id, user.company_id
       ]);
+
+      // Sincronizar tabla relacional de geocercas
+      await pool.execute('DELETE FROM shift_marking_zones WHERE shift_id = ?', [id]);
+      if (Array.isArray(body.marking_zones_json) && body.marking_zones_json.length > 0) {
+          const values = body.marking_zones_json.map((zoneId: string) => [generateUUID(), id, zoneId]);
+          await pool.query('INSERT INTO shift_marking_zones (id, shift_id, marking_zone_id) VALUES ?', [values]);
+      }
 
       const changes: any = {};
       const fields = ['name', 'prefix', 'shift_type', 'start_time', 'end_time', 'marking_zone_id', 'is_active', 'is_automatic_marking'];
