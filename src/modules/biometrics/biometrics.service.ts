@@ -39,10 +39,11 @@ export class BiometricService {
   }
 
   async identifyAndMark(companyId: string, inputRawDescriptor: number[], coords?: { lat: number, lng: number }) {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
     const inputDescriptor = this.normalizeDescriptor(inputRawDescriptor);
     const [templates]: any = await pool.execute(
-      'SELECT b.*, c.identification FROM collaborator_biometrics b JOIN collaborators c ON b.collaborator_id = c.id WHERE b.company_id = ? AND c.is_active = 1',
-      [companyId]
+      'SELECT b.*, c.identification, c.first_name, c.last_name FROM collaborator_biometrics b JOIN collaborators c ON b.collaborator_id = c.id WHERE b.company_id = ? AND c.is_active = 1',
+      [companyId] 
     );
     if (!templates.length) throw new Error('No hay firmas faciales registradas en la empresa.');
     let bestMatch: any = null;
@@ -59,9 +60,39 @@ export class BiometricService {
         threshold = parsed.faceIdThreshold || this.DEFAULT_THRESHOLD;
     }
     if (!bestMatch || minDistance > threshold) throw new Error('Identidad no reconocida. Intente de nuevo.');
+
+    // Buscar turno asignado para hoy
+    const [schedule]: any = await pool.execute(
+        `SELECT sh.* FROM schedules s 
+         JOIN shifts sh ON s.shift_id = sh.id 
+         WHERE s.collaborator_id = ? AND s.date = ? AND s.onDelete = 0`,
+        [bestMatch.collaborator_id, today]
+    );
+
+    const currentShift = schedule.length > 0 ? schedule[0] : null;
+    
+    // Registrar marcaje (La ubicación solo se valida internamente si hay un turno/zona vinculada)
     const markingResult = await this.attendanceService.registerMarking(companyId, bestMatch.identification, coords?.lat, coords?.lng);
+    
     await pool.execute('UPDATE attendance_records SET biometric_validation_id = ?, biometric_score = ? WHERE id = ?', [bestMatch.id, minDistance, markingResult.id]);
-    return { ...markingResult, confidence: (1 - minDistance).toFixed(4), match: true };
+
+    return { 
+        ...markingResult, 
+        collaboratorName: `${bestMatch.first_name} ${bestMatch.last_name}`,
+        confidence: (1 - minDistance).toFixed(4), 
+        match: true,
+        shift: currentShift ? {
+            name: currentShift.name,
+            prefix: currentShift.prefix,
+            start_time: currentShift.start_time,
+            end_time: currentShift.end_time,
+            shift_type: currentShift.shift_type
+        } : null,
+        validation: {
+            shift_match: !!currentShift,
+            zone_match: currentShift ? ((markingResult as any).is_valid_zone === 1) : false
+        }
+    };
   }
 
   async verifyAndMark(companyId: string, identification: string, inputRawDescriptor: number[], coords?: { lat: number, lng: number }) {
