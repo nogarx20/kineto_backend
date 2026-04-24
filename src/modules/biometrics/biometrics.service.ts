@@ -96,7 +96,7 @@ export class BiometricService {
         } : null,
         validation: {
             shift_match: !!currentShift,
-            zone_match: currentShift ? ((markingResult as any).is_valid_zone === 1) : false
+            zone_match: currentShift ? (markingResult.is_valid_zone === 1) : false
         }
     };
   }
