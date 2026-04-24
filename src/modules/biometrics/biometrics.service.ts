@@ -97,7 +97,11 @@ export class BiometricService {
         validation: {
             shift_match: !!currentShift,
             zone_match: currentShift ? ((markingResult as any).is_valid_zone === 1) : false
-        }
+        },
+        // Información geográfica para el frontend
+        zone_name: (markingResult as any).matched_zone_name,
+        lat: coords?.lat,
+        lng: coords?.lng
     };
   }
 
