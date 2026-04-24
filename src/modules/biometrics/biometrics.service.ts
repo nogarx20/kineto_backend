@@ -43,7 +43,7 @@ export class BiometricService {
     const inputDescriptor = this.normalizeDescriptor(inputRawDescriptor);
     const [templates]: any = await pool.execute(
       'SELECT b.*, c.identification, c.first_name, c.last_name, c.photo, c.email, c.phone FROM collaborator_biometrics b JOIN collaborators c ON b.collaborator_id = c.id WHERE b.company_id = ? AND c.is_active = 1',
-      [companyId]
+      [companyId] 
     );
     if (!templates.length) throw new Error('No hay firmas faciales registradas en la empresa.');
     let bestMatch: any = null;
