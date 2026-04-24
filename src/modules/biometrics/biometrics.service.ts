@@ -63,7 +63,7 @@ export class BiometricService {
 
     // Buscar turno asignado para hoy
     const [schedule]: any = await pool.execute(
-        `SELECT sh.*, s.id as schedule_id FROM schedules s 
+        `SELECT sh.* FROM schedules s 
          JOIN shifts sh ON s.shift_id = sh.id 
          WHERE s.collaborator_id = ? AND s.date = ? AND s.onDelete = 0`,
         [bestMatch.collaborator_id, today]
@@ -71,13 +71,8 @@ export class BiometricService {
 
     const currentShift = schedule.length > 0 ? schedule[0] : null;
     
-    // Registrar marcaje pasando explícitamente las zonas autorizadas del turno
-    const markingResult = await this.attendanceService.registerMarking(
-        companyId, 
-        bestMatch.identification, 
-        coords?.lat, 
-        coords?.lng
-    );
+    // Registrar marcaje (La ubicación solo se valida internamente si hay un turno/zona vinculada)
+    const markingResult = await this.attendanceService.registerMarking(companyId, bestMatch.identification, coords?.lat, coords?.lng);
     
     await pool.execute('UPDATE attendance_records SET biometric_validation_id = ?, biometric_score = ? WHERE id = ?', [bestMatch.id, minDistance, markingResult.id]);
 
@@ -101,10 +96,10 @@ export class BiometricService {
         } : null,
         validation: {
             shift_match: !!currentShift,
-            zone_match: currentShift ? ((markingResult as any).is_valid_zone === 1) : false
+            zone_match: (markingResult as any).is_in_zone
         },
-        // Información geográfica para el frontend
-        zone_name: (markingResult as any).matched_zone_name,
+        geofence_results: (markingResult as any).geofence_results || [],
+        zone_name: (markingResult as any).zone_name || ((markingResult as any).geofence_results?.length > 0 ? 'Fuera de Cobertura' : 'Sin Zona'),
         lat: coords?.lat,
         lng: coords?.lng
     };
