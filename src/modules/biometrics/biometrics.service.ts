@@ -42,7 +42,7 @@ export class BiometricService {
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
     const inputDescriptor = this.normalizeDescriptor(inputRawDescriptor);
     const [templates]: any = await pool.execute(
-      'SELECT b.*, c.identification, c.first_name, c.last_name FROM collaborator_biometrics b JOIN collaborators c ON b.collaborator_id = c.id WHERE b.company_id = ? AND c.is_active = 1',
+      'SELECT b.*, c.identification, c.first_name, c.last_name, c.photo, c.email, c.phone FROM collaborator_biometrics b JOIN collaborators c ON b.collaborator_id = c.id WHERE b.company_id = ? AND c.is_active = 1',
       [companyId] 
     );
     if (!templates.length) throw new Error('No hay firmas faciales registradas en la empresa.');
@@ -79,8 +79,14 @@ export class BiometricService {
     return { 
         ...markingResult, 
         collaboratorName: `${bestMatch.first_name} ${bestMatch.last_name}`,
+        collaboratorInfo: {
+            photo: bestMatch.photo,
+            email: bestMatch.email,
+            phone: bestMatch.phone
+        },
         confidence: (1 - minDistance).toFixed(4), 
         match: true,
+        type: currentShift ? markingResult.type : 'N/A', // Forzar N/A si no hay turno
         shift: currentShift ? {
             name: currentShift.name,
             prefix: currentShift.prefix,
