@@ -70,10 +70,29 @@ export class BiometricService {
     );
 
     const currentShift = schedule.length > 0 ? schedule[0] : null;
-    
-    // Registrar marcaje (La ubicación solo se valida internamente si hay un turno/zona vinculada)
+
+    // --- Nueva Lógica Geográfica Relacional ---
+    let zoneMatch = false;
+    let geofenceResults: any[] = [];
+    let matchedZoneName = null;
+
+    if (currentShift && coords && coords.lat !== 0) {
+        const [zones]: any = await pool.query(`
+            SELECT mz.name, mz.lat, mz.lng, mz.radius 
+            FROM marking_zones mz
+            JOIN shift_marking_zones smz ON mz.id = smz.marking_zone_id
+            WHERE smz.shift_id = ? AND mz.onDelete = 0 AND mz.is_active = 1
+        `, [currentShift.shift_id]);
+
+        geofenceResults = zones.map((z: any) => {
+            const dist = this.calculateHaversineDistance(coords.lat, coords.lng, Number(z.lat), Number(z.lng));
+            const inside = dist <= Number(z.radius);
+            if (inside) { zoneMatch = true; matchedZoneName = z.name; }
+            return { name: z.name, isInside: inside, distance: Math.round(dist), radius: z.radius };
+        });
+    }
+
     const markingResult = await this.attendanceService.registerMarking(companyId, bestMatch.identification, coords?.lat, coords?.lng);
-    
     await pool.execute('UPDATE attendance_records SET biometric_validation_id = ?, biometric_score = ? WHERE id = ?', [bestMatch.id, minDistance, markingResult.id]);
 
     return { 
@@ -151,5 +170,16 @@ export class BiometricService {
   async deleteFinger(companyId: string, id: string) {
     await this.repository.deleteFingerprint(companyId, id);
     return { success: true };
+  }
+
+  private calculateHaversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371e3; // Radio de la tierra en metros
+    const φ1 = (lat1 * Math.PI) / 180;
+    const φ2 = (lat2 * Math.PI) / 180;
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
   }
 }
