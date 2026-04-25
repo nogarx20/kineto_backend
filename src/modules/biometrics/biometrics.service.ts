@@ -61,54 +61,77 @@ export class BiometricService {
     }
     if (!bestMatch || minDistance > threshold) throw new Error('Identidad no reconocida. Intente de nuevo.');
 
-    // Buscar turno asignado para hoy
-    const [schedule]: any = await pool.execute(
-        `SELECT sh.* FROM schedules s 
+    // --- Identificación de Turnos (Hoy y Ayer para Nocturnos) ---
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    const yesterdayStr = yesterday.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+    const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+
+    const [schedules]: any = await pool.execute(
+        `SELECT sh.*, s.date as schedule_date, s.id as schedule_id 
+         FROM schedules s 
          JOIN shifts sh ON s.shift_id = sh.id 
-         WHERE s.collaborator_id = ? AND s.date = ? AND s.onDelete = 0`,
-        [bestMatch.collaborator_id, today]
+         WHERE s.collaborator_id = ? AND s.date IN (?, ?) AND s.onDelete = 0
+         ORDER BY s.date DESC`, 
+        [bestMatch.collaborator_id, yesterdayStr, todayStr]
     );
 
-    const currentShift = schedule.length > 0 ? schedule[0] : null;
-
-    // --- Lógica de Ventanas de Tiempo y Tipo de Marcaje ---
+    let currentShift = null;
     let timeMatch = false;
     let detectedType: 'IN' | 'OUT' | 'N/A' = 'N/A';
-    let timeFeedback = "Marcaje fuera de horario";
+    let timeFeedback = "Marcaje fuera de rango";
 
-    if (currentShift && currentShift.shift_type !== 'Descanso') {
-        const now = new Date();
-        const checkTime = (targetTime: string, beforeMins: number, afterMins: number) => {
+    for (const s of schedules) {
+        if (s.shift_type === 'Descanso') continue;
+
+        // Helper para validar si 'now' cae en la ventana de una hora específica
+        const checkWindow = (targetTime: string, before: number, after: number, dateRef: string, dayOffset = 0) => {
             if (!targetTime) return false;
             const [h, m] = targetTime.split(':').map(Number);
-            const target = new Date(now);
+            const target = new Date(dateRef + 'T00:00:00'); // Base en la fecha del turno
             target.setHours(h, m, 0, 0);
+            if (dayOffset) target.setDate(target.getDate() + dayOffset);
             
-            const start = new Date(target.getTime() - (beforeMins * 60000));
-            const end = new Date(target.getTime() + (afterMins * 60000));
-            return now >= start && now <= end;
+            const startLimit = new Date(target.getTime() - (before * 60000));
+            const endLimit = new Date(target.getTime() + (after * 60000));
+            return now >= startLimit && now <= endLimit;
         };
 
-        // Validar contra las 4 posibles ventanas
-        if (checkTime(currentShift.start_time, currentShift.entry_start_buffer, currentShift.entry_end_buffer)) {
-            detectedType = 'IN';
-            timeMatch = true;
-            timeFeedback = "Entrada Principal";
-        } else if (checkTime(currentShift.end_time, currentShift.exit_start_buffer, currentShift.exit_end_buffer)) {
-            detectedType = 'OUT';
-            timeMatch = true;
-            timeFeedback = "Salida Principal";
-        } else if (currentShift.shift_type === 'Partido') {
-            if (checkTime(currentShift.start_time_2, currentShift.entry_start_buffer_2, currentShift.entry_end_buffer_2)) {
-                detectedType = 'IN';
-                timeMatch = true;
-                timeFeedback = "Entrada Tramo 2";
-            } else if (checkTime(currentShift.end_time_2, currentShift.exit_start_buffer_2, currentShift.exit_end_buffer_2)) {
-                detectedType = 'OUT';
-                timeMatch = true;
-                timeFeedback = "Salida Final";
+        const baseDate = s.schedule_date instanceof Date ? s.schedule_date.toISOString().split('T')[0] : s.schedule_date;
+
+        // 1. Entrada Principal
+        if (checkWindow(s.start_time, s.entry_start_buffer, s.entry_end_buffer, baseDate)) {
+            detectedType = 'IN'; timeMatch = true; timeFeedback = "Entrada"; currentShift = s; break;
+        }
+
+        // 2. Salida Principal (Detectar Rollover)
+        const isOutRollover = s.end_time < s.start_time ? 1 : 0;
+        if (checkWindow(s.end_time, s.exit_start_buffer, s.exit_end_buffer, baseDate, isOutRollover)) {
+            detectedType = 'OUT'; timeMatch = true; timeFeedback = isOutRollover ? "Salida (Turno Ayer)" : "Salida"; currentShift = s; break;
+        }
+
+        // 3. Turnos Partidos
+        if (s.shift_type === 'Partido') {
+            const isEntry2Rollover = s.start_time_2 < s.start_time ? 1 : 0;
+            if (checkWindow(s.start_time_2, s.entry_start_buffer_2, s.entry_end_buffer_2, baseDate, isEntry2Rollover)) {
+                detectedType = 'IN'; timeMatch = true; timeFeedback = "Entrada P2"; currentShift = s; break;
+            }
+            
+            const isOut2Rollover = s.end_time_2 < s.start_time ? 1 : 0;
+            if (checkWindow(s.end_time_2, s.exit_start_buffer_2, s.exit_end_buffer_2, baseDate, isOut2Rollover)) {
+                detectedType = 'OUT'; timeMatch = true; timeFeedback = "Salida Final"; currentShift = s; break;
             }
         }
+    }
+
+    // Si no hubo match de ventana, tomamos el turno de "hoy" (si existe) para mostrar la info en la card roja
+    if (!currentShift) {
+        currentShift = schedules.find((s: any) => {
+            const d = s.schedule_date instanceof Date ? s.schedule_date.toISOString().split('T')[0] : s.schedule_date;
+            return d === todayStr;
+        }) || null;
     }
 
     // --- Lógica Geográfica Relacional ---
@@ -116,8 +139,8 @@ export class BiometricService {
     let geofenceResults: any[] = [];
     let matchedZoneName = null;
 
-    // Solo validamos geocerca si hubo match de tiempo o es un marcaje manual permitido
-    if (currentShift && coords && coords.lat !== 0 && coords.lat !== undefined) {
+    // Validamos geocerca contra el turno encontrado
+    if (currentShift && coords && coords.lat && coords.lat !== 0) {
         const [zones]: any = await pool.query(`
             SELECT mz.name, mz.lat, mz.lng, mz.radius 
             FROM marking_zones mz
