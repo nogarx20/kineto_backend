@@ -154,7 +154,7 @@ export class BiometricService {
             FROM marking_zones mz
             JOIN shift_marking_zones smz ON mz.id = smz.marking_zone_id
             WHERE smz.shift_id = ? AND mz.onDelete = 0 AND mz.is_active = 1
-        `, [currentShift.shift_id]);
+        `, [currentShift.id]);
 
         geofenceResults = zones.map((z: any) => {
             const dist = this.calculateHaversineDistance(coords.lat, coords.lng, Number(z.lat), Number(z.lng));
