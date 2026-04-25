@@ -172,13 +172,22 @@ export class BiometricService {
         type: detectedType, 
         time_feedback: timeFeedback,
         shift: currentShift ? {
+            id: currentShift.id,
             name: currentShift.name,
             prefix: currentShift.prefix,
             start_time: currentShift.start_time,
             end_time: currentShift.end_time,
-            shift_type: currentShift.shift_type
+            start_time_2: currentShift.start_time_2,
+            end_time_2: currentShift.end_time_2,
+            shift_type: currentShift.shift_type,
+            // Incluimos buffers para mostrar en el frontend el rango permitido
+            entry_start_buffer: currentShift.entry_start_buffer,
+            entry_end_buffer: currentShift.entry_end_buffer,
+            exit_start_buffer: currentShift.exit_start_buffer,
+            exit_end_buffer: currentShift.exit_end_buffer
         } : null,
         validation: {
+            has_schedule: !!currentShift, // Indica si existe turno hoy
             shift_match: timeMatch,
             zone_match: currentShift ? zoneMatch : false
         },
