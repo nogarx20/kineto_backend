@@ -90,8 +90,11 @@ export class BiometricService {
         const checkWindow = (targetTime: string, before: number, after: number, dateRef: string, dayOffset = 0) => {
             if (!targetTime) return false;
             const [h, m] = targetTime.split(':').map(Number);
-            const target = new Date(dateRef + 'T00:00:00'); // Base en la fecha del turno
-            target.setHours(h, m, 0, 0);
+            
+            // Forzamos la creación de la fecha en la zona horaria de Colombia (-05:00)
+            // Esto garantiza que la comparación sea correcta independientemente de la zona horaria del servidor.
+            const target = new Date(`${dateRef}T${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:00-05:00`);
+            
             if (dayOffset) target.setDate(target.getDate() + dayOffset);
             
             const startLimit = new Date(target.getTime() - (before * 60000));
@@ -99,7 +102,10 @@ export class BiometricService {
             return now >= startLimit && now <= endLimit;
         };
 
-        const baseDate = s.schedule_date instanceof Date ? s.schedule_date.toISOString().split('T')[0] : s.schedule_date;
+        // Extraemos la fecha de forma segura sin que el desfase UTC de toISOString mueva el día
+        const baseDate = s.schedule_date instanceof Date 
+            ? `${s.schedule_date.getFullYear()}-${(s.schedule_date.getMonth() + 1).toString().padStart(2, '0')}-${s.schedule_date.getDate().toString().padStart(2, '0')}` 
+            : s.schedule_date;
 
         // 1. Entrada Principal
         if (checkWindow(s.start_time, s.entry_start_buffer, s.entry_end_buffer, baseDate)) {
@@ -129,7 +135,9 @@ export class BiometricService {
     // Si no hubo match de ventana, tomamos el turno de "hoy" (si existe) para mostrar la info en la card roja
     if (!currentShift) {
         currentShift = schedules.find((s: any) => {
-            const d = s.schedule_date instanceof Date ? s.schedule_date.toISOString().split('T')[0] : s.schedule_date;
+            const d = s.schedule_date instanceof Date 
+                ? `${s.schedule_date.getFullYear()}-${(s.schedule_date.getMonth() + 1).toString().padStart(2, '0')}-${s.schedule_date.getDate().toString().padStart(2, '0')}` 
+                : s.schedule_date;
             return d === todayStr;
         }) || null;
     }
