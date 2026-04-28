@@ -1,210 +1,306 @@
 import { Request, Response } from 'express';
-import { ShiftService } from './shifts.service';
+import { CollaboratorService } from './collaborators.service';
 import { logAudit } from '../../middlewares/audit.middleware';
 import pool from '../../config/database';
 import { generateUUID } from '../../utils/uuid';
 
-const service = new ShiftService();
+const service = new CollaboratorService();
 
-export class ShiftController {
-  // Zones
-  async listZones(req: Request, res: Response) {
+export class CollaboratorController {
+  // --- Colaboradores ---
+  async list(req: Request, res: Response) {
     try {
       const user = (req as any).user;
-      const data = await service.getZones(user.company_id);
-      
-      // Registro de auditoría para la consulta de geocercas
-      await logAudit(req, 'LIST', 'marking_zones');
-      
+      const data = await service.findAll(user.company_id);
+      await logAudit(req, 'LIST', 'collaborators');
       (res as any).json(data);
     } catch (err: any) {
       (res as any).status(500).json({ error: err.message });
     }
   }
 
-  async createZone(req: Request, res: Response) {
+  async create(req: Request, res: Response) {
     try {
       const user = (req as any).user;
       const body = (req as any).body;
-      const id = await service.createZone(user.company_id, { ...body, is_active: true });
-      await logAudit(req, 'CREATE', 'marking_zones', id, body);
+      // Forzar activo por defecto en creación
+      const id = await service.create(user.company_id, { ...body });
+      
+      await logAudit(req, 'CREATE', 'collaborators', id, body);
       (res as any).status(201).json({ id });
     } catch (err: any) {
       (res as any).status(400).json({ error: err.message });
     }
   }
 
-  async updateZone(req: Request, res: Response) {
+  async update(req: Request, res: Response) {
     try {
       const { id } = (req as any).params;
       const body = (req as any).body;
       const user = (req as any).user;
-      const [oldRows]: any = await pool.execute('SELECT * FROM marking_zones WHERE id = ?', [id]);
-      const oldData = oldRows[0];
-      
-      await pool.execute(
-        'UPDATE marking_zones SET name = ?, lat = ?, lng = ?, radius = ?, zone_type = ?, bounds = ?, is_active = ? WHERE id = ? AND company_id = ?',
-        [body.name, body.lat, body.lng, body.radius, body.zone_type || 'circle', body.bounds ? JSON.stringify(body.bounds) : null, body.is_active === undefined ? oldData.is_active : (body.is_active ? 1 : 0), id, user.company_id]
-      );
 
-      const changes: any = {};
-      const fields = ['name', 'lat', 'lng', 'radius', 'zone_type', 'is_active'];
-      fields.forEach(f => {
-        const newVal = f === 'is_active' ? (body[f] ? 1 : 0) : body[f];
-        if (oldData && oldData[f] != newVal) {
-          changes[f] = { from: oldData[f], to: newVal };
+      // Validación de regla de negocio: No inactivar si existen contratos activos
+      if (body.status === 'Inactive' || body.status === 'Rejected') {
+        const [activeContracts]: any = await pool.execute(
+          'SELECT COUNT(*) as count FROM contracts WHERE collaborator_id = ? AND status = "Activo" AND company_id = ? AND onDelete = 0',
+          [id, user.company_id]
+        );
+        if (activeContracts[0].count > 0) {
+          throw new Error(`Acción Denegada: El colaborador posee ${activeContracts[0].count} contrato(s) con estado "Activo". Debe finalizar o cancelar los contratos vigentes antes de proceder a inactivar el perfil.`);
         }
-      });
+      }
 
-      await logAudit(req, 'UPDATE', 'marking_zones', id, { changes, payload: body });
+      await (service as any).repository.update(id, user.company_id, body);
+
+      await logAudit(req, 'UPDATE', 'collaborators', id, { full_payload: body });
       (res as any).json({ success: true });
-    } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
   }
 
-  async deleteZone(req: Request, res: Response) {
+  async delete(req: Request, res: Response) {
     try {
       const { id } = (req as any).params;
       const user = (req as any).user;
 
-      // RESTRICCIÓN: Verificar referencias en turnos (Columna simple y Columna JSON)
-      const [shiftUsage]: any = await pool.execute(`
-        SELECT COUNT(*) as count FROM shifts 
-        WHERE (marking_zone_id = ? OR (JSON_VALID(marking_zones_json) AND JSON_CONTAINS(marking_zones_json, JSON_QUOTE(?))))
-        AND company_id = ? AND onDelete = 0
-      `, [id, id, user.company_id]);
-
-      // RESTRICCIÓN: Verificar referencias en marcajes de asistencia
-      const [attendanceUsage]: any = await pool.execute(
-        'SELECT COUNT(*) as count FROM attendance_records WHERE marking_zone_id = ? AND company_id = ?',
-        [id, user.company_id]
-      );
+      const checks = [
+        { table: 'contracts', label: 'Contratos Laborales', query: 'SELECT COUNT(*) as count FROM contracts WHERE collaborator_id = ? AND onDelete = 0' },
+        { table: 'schedules', label: 'Programación de Turnos', query: 'SELECT COUNT(*) as count FROM schedules WHERE collaborator_id = ? AND onDelete = 0' },
+        { table: 'attendance_records', label: 'Marcajes de Asistencia', query: 'SELECT COUNT(*) as count FROM attendance_records WHERE collaborator_id = ?' },
+        { table: 'novelties', label: 'Novedades y Licencias', query: 'SELECT COUNT(*) as count FROM novelties WHERE collaborator_id = ? AND onDelete = 0' }
+      ];
 
       const activeReferences = [];
-      if (shiftUsage[0].count > 0) activeReferences.push(`Turnos operativos (${shiftUsage[0].count} registros)`);
-      if (attendanceUsage[0].count > 0) activeReferences.push(`Historial de Marcajes (${attendanceUsage[0].count} registros)`);
+      for (const check of checks) {
+        const [result]: any = await pool.execute(check.query, [id]);
+        if (result[0].count > 0) {
+          activeReferences.push(`${check.label} (${result[0].count} registros)`);
+        }
+      }
 
       if (activeReferences.length > 0) {
         return (res as any).status(400).json({ 
           error: 'Restricción de Integridad',
-          message: `No es posible eliminar esta geocerca porque el sistema detectó dependencias activas:\n\n` + 
+          message: `Acción denegada: El colaborador posee registros vinculados que impiden su eliminación directa:\n\n` + 
                    activeReferences.map(ref => `• ${ref}`).join('\n') + 
-                   `\n\nLe recomendamos marcar la zona como "Inactiva" para suspender su uso sin afectar los datos históricos registrados.`
+                   `\n\nDebe eliminar estas dependencias antes de proceder con el borrado definitivo.`
         });
       }
 
-      const [old]: any = await pool.execute('SELECT * FROM marking_zones WHERE id = ?', [id]);
+      const [oldCollab]: any = await pool.execute('SELECT first_name, last_name, identification FROM collaborators WHERE id = ?', [id]);
+      
       // Borrado lógico con onDelete
-      await pool.execute('UPDATE marking_zones SET onDelete = 1 WHERE id = ? AND company_id = ?', [id, user.company_id]);
-      await logAudit(req, 'DELETE', 'marking_zones', id, { deleted_record: old[0] });
+      await (service as any).repository.delete(id, user.company_id);
+      
+      await logAudit(req, 'DELETE', 'collaborators', id, { deleted_record: oldCollab[0] });
+      
       (res as any).json({ success: true });
-    } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
   }
 
-  // Shifts
-  async listShifts(req: Request, res: Response) {
+  async getFingerprints(req: Request, res: Response) {
     try {
-      const user = (req as any).user;
-      const data = await service.getShifts(user.company_id);
-      
-      // Registro de auditoría para la consulta de turnos operativos
-      await logAudit(req, 'LIST', 'shifts');
-
+      const { id } = (req as any).params;
+      const data = await (service as any).repository.getFingerprints(id);
       (res as any).json(data);
     } catch (err: any) {
       (res as any).status(500).json({ error: err.message });
     }
   }
 
-  async createShift(req: Request, res: Response) {
+  // --- Contratos (Nómina) ---
+  async listContracts(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const data = await (service as any).repository.listContracts(user.company_id);
+      await logAudit(req, 'LIST', 'contracts');
+      (res as any).json(data);
+    } catch (err: any) {
+      (res as any).status(500).json({ error: err.message });
+    }
+  }
+
+  async createContract(req: Request, res: Response) {
     try {
       const user = (req as any).user;
       const body = (req as any).body;
-      const id = await service.createShift(user.company_id, body);
-      await logAudit(req, 'CREATE', 'shifts', id, body);
-      (res as any).status(201).json({ id });
+      const id = generateUUID();
+
+      // Obtener prefijo del CC
+      const [cc]: any = await pool.execute('SELECT code FROM cost_centers WHERE id = ?', [body.cost_center_id]);
+      const prefix = cc[0]?.code || 'CON';
+
+      // Obtener el siguiente consecutivo real buscando el MAX actual numérico
+      const [maxRows]: any = await pool.execute(`
+        SELECT MAX(CAST(SUBSTRING_INDEX(contract_code, '-', -1) AS UNSIGNED)) as max_serial 
+        FROM contracts 
+        WHERE company_id = ? AND cost_center_id = ?
+      `, [user.company_id, body.cost_center_id]);
+      
+      const nextSerial = (maxRows[0].max_serial || 0) + 1;
+      // Componer código: Prefijo + consecutivo de 4 cifras rellenado con 0
+      const contract_code = `${prefix}-${nextSerial.toString().padStart(4, '0')}`;
+
+      await (service as any).repository.createContract({ 
+        ...body, 
+        id, 
+        company_id: user.company_id, 
+        contract_code, 
+        status: body.status || 'Activo' 
+      });
+      
+      await logAudit(req, 'CREATE', 'contracts', id, { contract_code, collaborator_id: body.collaborator_id });
+      
+      (res as any).status(201).json({ id, contract_code });
     } catch (err: any) {
       (res as any).status(400).json({ error: err.message });
     }
   }
 
-  async updateShift(req: Request, res: Response) {
+  async updateContract(req: Request, res: Response) {
     try {
       const { id } = (req as any).params;
       const body = (req as any).body;
       const user = (req as any).user;
-      const [oldRows]: any = await pool.execute('SELECT * FROM shifts WHERE id = ?', [id]);
-      if (oldRows.length === 0) throw new Error('Turno no encontrado');
-      const oldData = oldRows[0];
 
-      // RESTRICCIÓN: Impedir inactivación si hay programaciones activas (Hoy o Futuro)
-      if (body.is_active === false && oldData.is_active == 1) {
-        const [activeScheds]: any = await pool.execute(
-          'SELECT COUNT(*) as count FROM schedules WHERE shift_id = ? AND date >= CURDATE() AND company_id = ? AND onDelete = 0',
-          [id, user.company_id]
-        );
-        if (activeScheds[0].count > 0) {
-          return (res as any).status(400).json({
-            error: 'Restricción de Operación',
-            message: `No es posible inactivar el turno "${oldData.name}" porque posee ${activeScheds[0].count} asignaciones registradas para el periodo actual o futuro. Debe reasignar a estos colaboradores a otro turno antes de suspender la vigencia operativa de este horario.`
-          });
-        }
-      }
+      await (service as any).repository.updateContract(id, user.company_id, body);
       
-      await pool.execute(`
-        UPDATE shifts 
-        SET name = ?, prefix = ?, shift_type = ?, 
-            start_time = ?, end_time = ?, start_time_2 = ?, end_time_2 = ?,
-            entry_start_buffer = ?, entry_end_buffer = ?, exit_start_buffer = ?, exit_end_buffer = ?,
-            entry_start_buffer_2 = ?, entry_end_buffer_2 = ?, exit_start_buffer_2 = ?, exit_end_buffer_2 = ?,
-            rounding = ?, lunch_start = ?, lunch_end = ?, is_active = ?,
-            is_automatic_marking = ?
-        WHERE id = ? AND company_id = ?
-      `, [
-        body.name, body.prefix, body.shift_type || 'Simple',
-        body.start_time, body.end_time, body.start_time_2 || null, body.end_time_2 || null,
-        body.entry_start_buffer || 15, body.entry_end_buffer || 15, body.exit_start_buffer || 15, body.exit_end_buffer || 15,
-        body.entry_start_buffer_2 || 15, body.entry_end_buffer_2 || 15, body.exit_start_buffer_2 || 15, body.exit_end_buffer_2 || 15,
-        body.rounding || 0, body.lunch_start || null, body.lunch_end || null,
-        body.is_active === undefined ? oldData.is_active : (body.is_active ? 1 : 0),
-        body.is_automatic_marking ? 1 : 0,
-        id, user.company_id
-      ]);
-
-      const changes: any = {};
-      const fields = ['name', 'prefix', 'shift_type', 'start_time', 'end_time', 'marking_zone_id', 'is_active', 'is_automatic_marking'];
-      fields.forEach(f => {
-        if (oldData && oldData[f] != body[f]) {
-          changes[f] = { from: oldData[f], to: body[f] };
-        }
-      });
-
-      await logAudit(req, 'UPDATE', 'shifts', id, { changes, payload: body });
+      await logAudit(req, 'UPDATE', 'contracts', id, { payload: body });
+      
       (res as any).json({ success: true });
-    } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
   }
 
-  async deleteShift(req: Request, res: Response) {
+  async deleteContract(req: Request, res: Response) {
     try {
       const { id } = (req as any).params;
       const user = (req as any).user;
 
-      // RESTRICCIÓN: Verificar si el turno está asignado en la programación
-      const [usage]: any = await pool.execute(
-        'SELECT COUNT(*) as count FROM schedules WHERE shift_id = ? AND company_id = ? AND onDelete = 0',
-        [id, user.company_id]
-      );
+      const [con]: any = await pool.execute('SELECT contract_code FROM contracts WHERE id = ?', [id]);
+      if (con.length === 0) throw new Error('Contrato no encontrado');
 
-      if (usage[0].count > 0) {
-        return (res as any).status(400).json({ 
-          error: 'Restricción de Integridad',
-          message: `No es posible eliminar este turno porque tiene ${usage[0].count} asignaciones registradas en la programación activa. Debe eliminar o reasignar estos registros antes de proceder.`
-        });
+      // Borrado lógico con onDelete
+      await (service as any).repository.deleteContract(id, user.company_id);
+      
+      await logAudit(req, 'DELETE', 'contracts', id, { contract_code: con[0].contract_code });
+      
+      (res as any).json({ success: true });
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
+  }
+
+  // --- Auxiliares ---
+  async listPositions(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const [data]: any = await pool.execute(`
+        SELECT p.*, 
+        (SELECT COUNT(*) FROM contracts WHERE position_name = p.name AND company_id = p.company_id AND status = 'Activo' AND onDelete = 0) as active_count,
+        (SELECT COUNT(*) FROM contracts WHERE position_name = p.name AND company_id = p.company_id AND status != 'Activo' AND onDelete = 0) as inactive_count
+        FROM positions p 
+        WHERE p.company_id = ? AND p.onDelete = 0
+      `, [user.company_id]);
+      await logAudit(req, 'LIST', 'positions');
+      (res as any).json(data);
+    } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
+  }
+
+  async createPosition(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const { name, is_active } = (req as any).body;
+      const id = generateUUID();
+      await (service as any).repository.createPosition({ id, company_id: user.company_id, name, is_active });
+      await logAudit(req, 'CREATE', 'positions', id, { name, is_active });
+      (res as any).status(201).json({ id });
+    } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
+  }
+
+  async updatePosition(req: Request, res: Response) {
+    try {
+      const { id } = (req as any).params;
+      const { name, is_active } = (req as any).body;
+      const user = (req as any).user;
+      await (service as any).repository.updatePosition(id, user.company_id, { name, is_active });
+      await logAudit(req, 'UPDATE', 'positions', id, { name, is_active });
+      (res as any).json({ success: true });
+    } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
+  }
+
+  async deletePosition(req: Request, res: Response) {
+    try {
+      const { id } = (req as any).params;
+      const user = (req as any).user;
+
+      await (service as any).repository.deletePosition(id, user.company_id);
+      await logAudit(req, 'DELETE', 'positions', id);
+      (res as any).json({ success: true });
+    } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
+  }
+
+  async listCostCenters(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const [data]: any = await pool.execute(`
+        SELECT cc.*, 
+        (SELECT COUNT(*) FROM contracts WHERE cost_center_id = cc.id AND company_id = cc.company_id AND status = 'Activo' AND onDelete = 0) as active_count,
+        (SELECT COUNT(*) FROM contracts WHERE cost_center_id = cc.id AND company_id = cc.company_id AND status != 'Activo' AND onDelete = 0) as inactive_count,
+        (SELECT COUNT(*) FROM contracts WHERE cost_center_id = cc.id AND company_id = cc.company_id AND onDelete = 0) as total_count
+        FROM cost_centers cc 
+        WHERE cc.company_id = ? AND cc.onDelete = 0
+      `, [user.company_id]);
+      await logAudit(req, 'LIST', 'cost_centers');
+      (res as any).json(data);
+    } catch (err: any) { (res as any).status(500).json({ error: err.message }); }
+  }
+
+  async createCostCenter(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const { code, name, is_active } = (req as any).body;
+      const id = generateUUID();
+      await (service as any).repository.createCostCenter({ id, company_id: user.company_id, code, name, is_active });
+      await logAudit(req, 'CREATE', 'cost_centers', id, { code, name, is_active });
+      (res as any).status(201).json({ id });
+    } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
+  }
+
+  async updateCostCenter(req: Request, res: Response) {
+    try {
+      const { id } = (req as any).params;
+      const { code, name, is_active } = (req as any).body;
+      const user = (req as any).user;
+
+      // Validación: No inactivar si tiene contratos activos
+      if (is_active === false || is_active === 0) {
+        const [activeContracts]: any = await pool.execute(
+          'SELECT COUNT(*) as count FROM contracts WHERE cost_center_id = ? AND status = "Activo" AND company_id = ? AND onDelete = 0',
+          [id, user.company_id]
+        );
+        if (activeContracts[0].count > 0) {
+          throw new Error(`Acción Denegada: El centro de costo posee ${activeContracts[0].count} contrato(s) activos. Debe reasignarlos antes de inactivar.`);
+        }
       }
 
-      const [old]: any = await pool.execute('SELECT * FROM shifts WHERE id = ?', [id]);
-      // Borrado lógico con onDelete
-      await pool.execute('UPDATE shifts SET onDelete = 1 WHERE id = ? AND company_id = ?', [id, user.company_id]);
-      await logAudit(req, 'DELETE', 'shifts', id, { deleted_record: old[0] });
+      await (service as any).repository.updateCostCenter(id, user.company_id, { code, name, is_active });
+      await logAudit(req, 'UPDATE', 'cost_centers', id, { code, name, is_active });
+      (res as any).json({ success: true });
+    } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
+  }
+
+  async deleteCostCenter(req: Request, res: Response) {
+    try {
+      const { id } = (req as any).params;
+      const user = (req as any).user;
+
+      await (service as any).repository.deleteCostCenter(id, user.company_id);
+      await logAudit(req, 'DELETE', 'cost_centers', id);
       (res as any).json({ success: true });
     } catch (err: any) { (res as any).status(400).json({ error: err.message }); }
   }
