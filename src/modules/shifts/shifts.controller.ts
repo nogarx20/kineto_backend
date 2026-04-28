@@ -170,13 +170,6 @@ export class ShiftController {
         id, user.company_id
       ]);
 
-      // Sincronizar tabla relacional de geocercas
-      await pool.execute('DELETE FROM shift_marking_zones WHERE shift_id = ?', [id]);
-      if (Array.isArray(body.marking_zones_json) && body.marking_zones_json.length > 0) {
-          const values = body.marking_zones_json.map((zoneId: string) => [generateUUID(), id, zoneId]);
-          await pool.query('INSERT INTO shift_marking_zones (id, shift_id, marking_zone_id) VALUES ?', [values]);
-      }
-
       const changes: any = {};
       const fields = ['name', 'prefix', 'shift_type', 'start_time', 'end_time', 'marking_zone_id', 'is_active', 'is_automatic_marking'];
       fields.forEach(f => {
