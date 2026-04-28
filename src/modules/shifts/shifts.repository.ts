@@ -29,9 +29,6 @@ export class ShiftRepository {
     const [rows]: any = await pool.execute(`
       SELECT 
         s.*, 
-        (SELECT JSON_ARRAYAGG(marking_zone_id) 
-         FROM shift_marking_zones 
-         WHERE shift_id = s.id) as marking_zones_json,
         (SELECT COUNT(*) FROM schedules sch WHERE sch.shift_id = s.id AND sch.onDelete = 0) as schedule_count,
         (SELECT COUNT(*) FROM schedules sch WHERE sch.shift_id = s.id AND sch.onDelete = 0 AND sch.date >= CURDATE()) as active_schedule_count
       FROM shifts s
@@ -59,12 +56,6 @@ export class ShiftRepository {
        is_automatic_marking, marking_zones_json, onDelete)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
     `, [id, company_id, name, prefix, shift_type, start_time, end_time, start_time_2, end_time_2, entry_start_buffer, entry_end_buffer, exit_start_buffer, exit_end_buffer, entry_start_buffer_2, entry_end_buffer_2, exit_start_buffer_2, exit_end_buffer_2, rounding, lunch_start, lunch_end, null, is_active, is_automatic_marking, null]);
-
-    // Insertar relaciones en la nueva tabla
-    if (Array.isArray(marking_zones_json) && marking_zones_json.length > 0) {
-        const values = marking_zones_json.map(zoneId => [generateUUID(), id, zoneId]);
-        await pool.query('INSERT INTO shift_marking_zones (id, shift_id, marking_zone_id) VALUES ?', [values]);
-    }
     
     return id;
   }
