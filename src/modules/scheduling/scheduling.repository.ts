@@ -15,28 +15,31 @@ export class SchedulingRepository {
         sh.lunch_start,
         sh.lunch_end,
         cc.code as cost_center_code,
+        mz.name as zone_name,
         c.first_name, 
         c.last_name
       FROM schedules s
       JOIN shifts sh ON s.shift_id = sh.id
       JOIN collaborators c ON s.collaborator_id = c.id
       LEFT JOIN cost_centers cc ON s.cost_center_id = cc.id
+      LEFT JOIN marking_zones mz ON s.marking_zone_id = mz.id
       WHERE s.company_id = ? AND s.date BETWEEN ? AND ? AND s.onDelete = 0
     `, [companyId, startDate, endDate]);
     return rows;
   }
 
   async createOrUpdate(data: any) {
-    const { id, company_id, collaborator_id, shift_id, cost_center_id, date } = data;
+    const { id, company_id, collaborator_id, shift_id, cost_center_id, marking_zone_id, date } = data;
     
     await pool.execute(`
-      INSERT INTO schedules (id, company_id, collaborator_id, shift_id, cost_center_id, date, onDelete)
-      VALUES (?, ?, ?, ?, ?, ?, 0)
+      INSERT INTO schedules (id, company_id, collaborator_id, shift_id, cost_center_id, marking_zone_id, date, onDelete)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 0)
       ON DUPLICATE KEY UPDATE 
         shift_id = VALUES(shift_id),
         cost_center_id = VALUES(cost_center_id),
+        marking_zone_id = VALUES(marking_zone_id),
         onDelete = 0
-    `, [id, company_id, collaborator_id, shift_id, cost_center_id || null, date]);
+    `, [id, company_id, collaborator_id, shift_id, cost_center_id || null, marking_zone_id || null, date]);
     
     return id;
   }
