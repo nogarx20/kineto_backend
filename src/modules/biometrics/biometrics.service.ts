@@ -149,12 +149,10 @@ export class BiometricService {
 
     // Validamos geocerca contra el turno encontrado
     if (currentShift && coords && coords.lat && coords.lat !== 0) {
-        const [zones]: any = await pool.query(`
-            SELECT mz.name, mz.lat, mz.lng, mz.radius 
-            FROM marking_zones mz
-            JOIN shift_marking_zones smz ON mz.id = smz.marking_zone_id
-            WHERE smz.shift_id = ? AND mz.onDelete = 0 AND mz.is_active = 1
-        `, [currentShift.id]);
+        const [zones]: any = await pool.query(
+            'SELECT name, lat, lng, radius FROM marking_zones WHERE id = ? AND onDelete = 0 AND is_active = 1',
+            [currentShift.marking_zone_id]
+        );
 
         geofenceResults = zones.map((z: any) => {
             const dist = this.calculateHaversineDistance(coords.lat, coords.lng, Number(z.lat), Number(z.lng));
