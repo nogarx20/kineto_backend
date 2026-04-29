@@ -25,11 +25,11 @@ export class SchedulingController {
   async assign(req: Request, res: Response) {
     try {
       const user = (req as any).user;
-      const { collaboratorId, shiftId, date, costCenterId } = (req as any).body;
+      const { id, collaboratorId, shiftId, date, costCenterId, markingZoneId } = (req as any).body;
       
-      await service.assignShift(user.company_id, collaboratorId, shiftId, date, costCenterId);
+      await service.assignShift(user.company_id, id, collaboratorId, shiftId, date, costCenterId, markingZoneId);
       
-      await logAudit(req, 'ASSIGN_SHIFT', 'schedules', undefined, { collaboratorId, date, costCenterId });
+      await logAudit(req, 'ASSIGN_SHIFT', 'schedules', undefined, { collaboratorId, date, costCenterId, markingZoneId });
       (res as any).json({ success: true });
     } catch (err: any) {
       (res as any).status(400).json({ error: err.message });
