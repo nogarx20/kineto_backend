@@ -21,7 +21,8 @@ export class CollaboratorRepository {
         con.weekly_hours,
         con.status as contract_status,
         EXISTS(SELECT 1 FROM collaborator_biometrics cb WHERE cb.collaborator_id = c.id) as has_faceid,
-        (SELECT COUNT(*) FROM collaborator_fingerprints cf WHERE cf.collaborator_id = c.id) as finger_count
+        (SELECT COUNT(*) FROM collaborator_fingerprints cf WHERE cf.collaborator_id = c.id) as finger_count,
+        con.marking_zone_id
       FROM collaborators c
       LEFT JOIN contracts con ON con.collaborator_id = c.id AND con.onDelete = 0 AND con.status = 'Activo'
       LEFT JOIN cost_centers cc ON con.cost_center_id = cc.id AND cc.onDelete = 0
