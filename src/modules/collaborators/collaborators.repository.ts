@@ -165,7 +165,7 @@ export class CollaboratorRepository {
     
     await pool.execute(`
       INSERT INTO contracts 
-      (id, company_id, collaborator_id, cost_center_id, marking_zone_id, contract_code, start_date, end_date, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime, discount_lunch, status, onDelete)
+      (id, company_id, collaborator_id, cost_center_id, marking_zone_id, contract_code, start_date, end_date, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime, discount_lunch, status, onDelete) -- marking_zone_id se maneja como anulable
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
     `, [id, company_id, collaborator_id, cost_center_id, marking_zone_id || null, contract_code, start_date, end_date || null, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime ? 1 : 0, discount_lunch ? 1 : 0, status || 'Activo']);
     
@@ -180,7 +180,7 @@ export class CollaboratorRepository {
 
     await pool.execute(`
       UPDATE contracts 
-      SET cost_center_id = ?, marking_zone_id = ?, start_date = ?, end_date = ?, position_name = ?, 
+      SET cost_center_id = ?, marking_zone_id = ?, start_date = ?, end_date = ?, position_name = ?, -- marking_zone_id se maneja como anulable
           contract_type = ?, weekly_hours = ?, working_days = ?, rest_days = ?, generates_overtime = ?, discount_lunch = ?, status = ?
       WHERE id = ? AND company_id = ?
     `, [cost_center_id, marking_zone_id || null, start_date, end_date || null, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime ? 1 : 0, discount_lunch ? 1 : 0, status, id, companyId]);
