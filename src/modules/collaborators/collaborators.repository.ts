@@ -6,26 +6,28 @@ export class CollaboratorRepository {
   async findAll(companyId: string) {
     const [rows]: any = await pool.execute(`
       SELECT 
-        c.*, 
-        c.status as collab_status_id,
-        con.id as contract_id,
-        con.position_name,
-        con.cost_center_id,
-        cc.code as cost_center_code,
-        con.contract_code,
-        con.start_date as contract_start,
-        con.end_date as contract_end,
-        con.rest_days,
-        con.working_days,
-        con.discount_lunch,
-        con.weekly_hours,
-        con.status as contract_status,
-        EXISTS(SELECT 1 FROM collaborator_biometrics cb WHERE cb.collaborator_id = c.id) as has_faceid,
-        (SELECT COUNT(*) FROM collaborator_fingerprints cf WHERE cf.collaborator_id = c.id) as finger_count,
-        con.marking_zone_id
+      c.*, 
+      c.status AS collab_status_id,
+      con.id AS contract_id,
+      con.position_name,
+      con.cost_center_id,
+      cc.code AS cost_center_code,
+      con.contract_code,
+      con.start_date AS contract_start,
+      con.end_date AS contract_end,
+      con.rest_days,
+      con.working_days,
+      con.discount_lunch,
+      con.weekly_hours,
+      con.status AS contract_status,
+      EXISTS(SELECT 1 FROM collaborator_biometrics cb WHERE cb.collaborator_id = c.id) AS has_faceid,
+      (SELECT COUNT(*) FROM collaborator_fingerprints cf WHERE cf.collaborator_id = c.id) AS finger_count,
+      con.marking_zone_id,
+      mz.name AS marking_zone_name
       FROM collaborators c
       LEFT JOIN contracts con ON con.collaborator_id = c.id AND con.onDelete = 0 AND con.status = 'Activo'
       LEFT JOIN cost_centers cc ON con.cost_center_id = cc.id AND cc.onDelete = 0
+      LEFT JOIN marking_zones mz ON con.marking_zone_id = mz.id
       WHERE c.company_id = ? AND c.onDelete = 0
       ORDER BY c.first_name, c.last_name
     `, [companyId]);
