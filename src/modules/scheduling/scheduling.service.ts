@@ -2,6 +2,13 @@ import { SchedulingRepository } from './scheduling.repository';
 import { generateUUID } from '../../utils/uuid';
 import pool from '../../config/database';
 
+// Define an interface for scheduling parameters
+interface SchedulingParameters {
+  min_rest_hours: number;
+  max_daily_extra_hours: number;
+  max_weekly_extra_hours: number;
+}
+
 export class SchedulingService {
   private repository = new SchedulingRepository();
 
@@ -11,6 +18,10 @@ export class SchedulingService {
 
   async assignShift(companyId: string, id: string | undefined, collaboratorId: string, shiftId: string, date: string, costCenterId?: string, markingZoneId?: string) {
     // 1. Si estamos reasignando, validar que el turno actual no tenga marcajes
+    // If the existing schedule is the same as the new one, do nothing.
+    // This prevents unnecessary updates and potential errors if the existing one has attendance.
+    // This check is important for the quick fill actions.
+    
     const existingOnDate = await this.repository.findByCollaboratorAndDate(companyId, collaboratorId, date);
     if (existingOnDate && await this.repository.hasAttendance(existingOnDate.id)) {
         throw new Error("Acción Denegada: El turno actual ya posee registros de asistencia y no puede ser modificado.");
@@ -40,7 +51,7 @@ export class SchedulingService {
     }
 
     // --- VALIDACIÓN DE CRUCE DE HORARIOS ---
-    const params = await this.repository.getParameters(companyId);
+    const params: SchedulingParameters = await this.repository.getParameters(companyId);
     const [targetShiftData]: any = await pool.execute('SELECT * FROM shifts WHERE id = ?', [shiftId]);
     const newShift = targetShiftData[0];
 
@@ -128,5 +139,11 @@ export class SchedulingService {
         // En borrado masivo omitimos los que tengan error (marcajes)
       }
     }
+  }
+
+  async saveParameters(companyId: string, userId: string, params: { min_rest_hours: number, max_daily_extra_hours: number, max_weekly_extra_hours: number }) {
+    const id = generateUUID();
+    await this.repository.createParameters({ id, company_id: companyId, user_id: userId, ...params });
+    return { success: true, id };
   }
 }
