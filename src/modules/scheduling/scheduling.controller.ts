@@ -68,7 +68,7 @@ export class SchedulingController {
       const { id } = (req as any).params;
       const user = (req as any).user;
       
-      await (service as any).repository.delete(user.company_id, id);
+      await service.deleteShift(user.company_id, id);
       await logAudit(req, 'DELETE_SCHEDULE', 'schedules', id);
       
       (res as any).json({ success: true });
