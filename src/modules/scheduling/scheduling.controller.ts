@@ -50,6 +50,19 @@ export class SchedulingController {
     }
   }
 
+  async bulkDelete(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const { ids } = (req as any).body;
+      
+      await service.bulkDelete(user.company_id, ids);
+      await logAudit(req, 'BULK_DELETE_SCHEDULE', 'schedules', undefined, { count: ids.length });
+      (res as any).json({ success: true });
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
+  }
+
   async delete(req: Request, res: Response) {
     try {
       const { id } = (req as any).params;
