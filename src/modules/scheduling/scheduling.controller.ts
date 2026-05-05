@@ -22,6 +22,16 @@ export class SchedulingController {
     }
   }
 
+  async getSchedulingParameters(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const params = await (service as any).repository.getParameters(user.company_id);
+      (res as any).json(params);
+    } catch (err: any) {
+      (res as any).status(500).json({ error: err.message });
+    }
+  }
+
   async assign(req: Request, res: Response) {
     try {
       const user = (req as any).user;
@@ -71,6 +81,20 @@ export class SchedulingController {
       await service.deleteShift(user.company_id, id);
       await logAudit(req, 'DELETE_SCHEDULE', 'schedules', id);
       
+      (res as any).json({ success: true });
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
+  }
+
+  async saveSchedulingParameters(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const { min_rest_hours, max_daily_extra_hours, max_weekly_extra_hours } = (req as any).body;
+      
+      const result = await service.saveParameters(user.company_id, user.id, { min_rest_hours, max_daily_extra_hours, max_weekly_extra_hours });
+      
+      await logAudit(req, 'UPDATE_SCHEDULING_PARAMETERS', 'scheduling_parameters', result.id, { min_rest_hours, max_daily_extra_hours, max_weekly_extra_hours });
       (res as any).json({ success: true });
     } catch (err: any) {
       (res as any).status(400).json({ error: err.message });
