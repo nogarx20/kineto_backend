@@ -10,6 +10,12 @@ export class SchedulingService {
   }
 
   async assignShift(companyId: string, id: string | undefined, collaboratorId: string, shiftId: string, date: string, costCenterId?: string, markingZoneId?: string) {
+    // 1. Si estamos reasignando, validar que el turno actual no tenga marcajes
+    const existingOnDate = await this.repository.findByCollaboratorAndDate(companyId, collaboratorId, date);
+    if (existingOnDate && await this.repository.hasAttendance(existingOnDate.id)) {
+        throw new Error("Acción Denegada: El turno actual ya posee registros de asistencia y no puede ser modificado.");
+    }
+
     // Validar contrato activo y obtener tipo de turno para reglas de negocio
     const [rows]: any = await pool.execute(`
       SELECT c.cost_center_id, c.marking_zone_id, sh.shift_type
@@ -31,6 +37,49 @@ export class SchedulingService {
     let finalZoneId = markingZoneId || row.marking_zone_id;
     if (row.shift_type === 'Descanso') {
         finalZoneId = null;
+    }
+
+    // --- VALIDACIÓN DE CRUCE DE HORARIOS ---
+    const params = await this.repository.getParameters(companyId);
+    const [targetShiftData]: any = await pool.execute('SELECT * FROM shifts WHERE id = ?', [shiftId]);
+    const newShift = targetShiftData[0];
+
+    if (newShift.shift_type !== 'Descanso') {
+        // Obtener turnos de ayer y mañana
+        const prevDate = new Date(new Date(date).getTime() - 86400000).toISOString().split('T')[0];
+        const nextDate = new Date(new Date(date).getTime() + 86400000).toISOString().split('T')[0];
+
+        const prevSched = await this.repository.findByCollaboratorAndDate(companyId, collaboratorId, prevDate);
+        const nextSched = await this.repository.findByCollaboratorAndDate(companyId, collaboratorId, nextDate);
+
+        const getIntervals = (d: string, s: any) => {
+            if (!s || s.shift_type === 'Descanso') return [];
+            const res = [];
+            const start = new Date(`${d}T${s.start_time}`);
+            const end = new Date(`${d}T${s.end_time}`);
+            if (end < start) end.setDate(end.getDate() + 1);
+            res.push({ start, end });
+            if (s.shift_type === 'Partido' && s.start_time_2) {
+                const start2 = new Date(`${d}T${s.start_time_2}`);
+                const end2 = new Date(`${d}T${s.end_time_2}`);
+                if (end2 < start2) end2.setDate(end2.getDate() + 1);
+                res.push({ start: start2, end: end2 });
+            }
+            return res;
+        };
+
+        const newIntervals = getIntervals(date, newShift);
+        const prevIntervals = getIntervals(prevDate, prevSched);
+
+        // Validar contra el turno anterior (Cruce y Descanso mínimo)
+        if (prevIntervals.length > 0 && newIntervals.length > 0) {
+            const lastPrevEnd = prevIntervals[prevIntervals.length - 1].end;
+            const firstNewStart = newIntervals[0].start;
+            const diffHours = (firstNewStart.getTime() - lastPrevEnd.getTime()) / (1000 * 60 * 60);
+
+            if (diffHours < 0) throw new Error(`Conflicto de Horario: El turno anterior termina a las ${lastPrevEnd.toLocaleTimeString()} y el nuevo inicia a las ${firstNewStart.toLocaleTimeString()}. Los horarios se cruzan.`);
+            if (diffHours < params.min_rest_hours) throw new Error(`Incumplimiento de Descanso: Entre el turno anterior y el nuevo solo hay ${diffHours.toFixed(1)}h de descanso. El mínimo parametrizado es ${params.min_rest_hours}h.`);
+        }
     }
 
     const scheduleId = id || generateUUID();
@@ -61,9 +110,23 @@ export class SchedulingService {
     return { count: successCount, errors };
   }
 
+  async deleteShift(companyId: string, id: string) {
+    // Validar si tiene asistencia antes de borrar
+    const hasAttendance = await this.repository.hasAttendance(id);
+    if (hasAttendance) {
+        throw new Error("Acción Denegada: No es posible eliminar una asignación que ya cuenta con registros de asistencia vinculados.");
+    }
+    await this.repository.delete(companyId, id);
+    return { success: true };
+  }
+
   async bulkDelete(companyId: string, ids: string[]) {
     for (const id of ids) {
-      await this.repository.delete(companyId, id);
+      try {
+        await this.deleteShift(companyId, id);
+      } catch (e) {
+        // En borrado masivo omitimos los que tengan error (marcajes)
+      }
     }
   }
 }
