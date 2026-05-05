@@ -60,4 +60,10 @@ export class SchedulingService {
     }
     return { count: successCount, errors };
   }
+
+  async bulkDelete(companyId: string, ids: string[]) {
+    for (const id of ids) {
+      await this.repository.delete(companyId, id);
+    }
+  }
 }
