@@ -17,7 +17,8 @@ export class SchedulingRepository {
         cc.code as cost_center_code,
         mz.name as zone_name,
         c.first_name, 
-        c.last_name
+        c.last_name,
+        (SELECT COUNT(*) FROM attendance_records ar WHERE ar.schedule_id = s.id) > 0 as has_attendance
       FROM schedules s
       JOIN shifts sh ON s.shift_id = sh.id
       JOIN collaborators c ON s.collaborator_id = c.id
@@ -46,5 +47,25 @@ export class SchedulingRepository {
 
   async delete(companyId: string, id: string) {
     await pool.execute('UPDATE schedules SET onDelete = 1 WHERE id = ? AND company_id = ?', [id, companyId]);
+  }
+
+  async getParameters(companyId: string) {
+    const [rows]: any = await pool.execute('SELECT * FROM scheduling_parameters WHERE company_id = ?', [companyId]);
+    return rows[0] || { min_rest_hours: 12 }; // Valores por defecto
+  }
+
+  async findByCollaboratorAndDate(companyId: string, collaboratorId: string, date: string) {
+    const [rows]: any = await pool.execute(`
+      SELECT s.*, sh.start_time, sh.end_time, sh.start_time_2, sh.end_time_2, sh.shift_type
+      FROM schedules s
+      JOIN shifts sh ON s.shift_id = sh.id
+      WHERE s.company_id = ? AND s.collaborator_id = ? AND s.date = ? AND s.onDelete = 0
+    `, [companyId, collaboratorId, date]);
+    return rows[0];
+  }
+
+  async hasAttendance(id: string): Promise<boolean> {
+    const [rows]: any = await pool.execute('SELECT COUNT(*) as count FROM attendance_records WHERE schedule_id = ?', [id]);
+    return rows[0].count > 0;
   }
 }
