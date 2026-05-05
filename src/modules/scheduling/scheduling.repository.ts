@@ -50,8 +50,20 @@ export class SchedulingRepository {
   }
 
   async getParameters(companyId: string) {
-    const [rows]: any = await pool.execute('SELECT * FROM scheduling_parameters WHERE company_id = ?', [companyId]);
-    return rows[0] || { min_rest_hours: 12 }; // Valores por defecto
+    const [rows]: any = await pool.execute(
+      'SELECT * FROM scheduling_parameters WHERE company_id = ? ORDER BY createdAt DESC LIMIT 1',
+      [companyId]
+    );
+    return rows[0] || { min_rest_hours: 12, max_daily_extra_hours: 2, max_weekly_extra_hours: 12 }; // Valores por defecto
+  }
+
+  async createParameters(data: { id: string, company_id: string, user_id: string, min_rest_hours: number, max_daily_extra_hours: number, max_weekly_extra_hours: number }) {
+    const { id, company_id, user_id, min_rest_hours, max_daily_extra_hours, max_weekly_extra_hours } = data;
+    await pool.execute(
+      'INSERT INTO scheduling_parameters (id, company_id, user_id, min_rest_hours, max_daily_extra_hours, max_weekly_extra_hours) VALUES (?, ?, ?, ?, ?, ?)',
+      [id, company_id, user_id, min_rest_hours, max_daily_extra_hours, max_weekly_extra_hours]
+    );
+    return id;
   }
 
   async findByCollaboratorAndDate(companyId: string, collaboratorId: string, date: string) {
