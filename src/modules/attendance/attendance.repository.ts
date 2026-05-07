@@ -31,6 +31,15 @@ export class AttendanceRepository {
     return id;
   }
 
+  async create(data: any) {
+    const { id, company_id, collaborator_id, schedule_id, time, type, lat, lng, validation_details, geofence_details, biometric_validation_id, biometric_score } = data;
+    await pool.execute(
+      `INSERT INTO attendance_records (id, company_id, collaborator_id, schedule_id, time, type, lat, lng, validation_details, geofence_details, biometric_validation_id, biometric_score)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, company_id, collaborator_id, schedule_id, time, type, lat, lng, validation_details, geofence_details, biometric_validation_id || null, biometric_score || null]
+    );
+  }
+
   async findTodayRecords(companyId: string, collaboratorId: string) {
     const [rows]: any = await pool.execute(`
       SELECT * FROM attendance_records 
@@ -72,5 +81,29 @@ export class AttendanceRepository {
       LIMIT 1
     `, [collaboratorId, companyId]);
     return rows[0];
+  }
+
+  async findLastMarking(collaboratorId: string, scheduleId?: string) {
+    const [rows]: any = await pool.execute(
+      `SELECT * FROM attendance_records WHERE collaborator_id = ? ${scheduleId ? 'AND schedule_id = ?' : ''} ORDER BY time DESC LIMIT 1`,
+      scheduleId ? [collaboratorId, scheduleId] : [collaboratorId]
+    );
+    return rows[0];
+  }
+
+  async findByScheduleId(companyId: string, scheduleId: string) {
+    const [rows]: any = await pool.execute(`
+      SELECT
+        ar.*,
+        cc.name as cost_center_name,
+        mz.name as marking_zone_name
+      FROM attendance_records ar
+      LEFT JOIN schedules s ON ar.schedule_id = s.id
+      LEFT JOIN cost_centers cc ON s.cost_center_id = cc.id
+      LEFT JOIN marking_zones mz ON s.marking_zone_id = mz.id
+      WHERE ar.company_id = ? AND ar.schedule_id = ?
+      ORDER BY ar.time ASC
+    `, [companyId, scheduleId]);
+    return rows;
   }
 }
