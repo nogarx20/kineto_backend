@@ -135,4 +135,7 @@ export class AttendanceService {
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   }
+  async getAttendanceRecordsBySchedule(companyId: string, scheduleId: string) {
+    return await this.repository.findByScheduleId(companyId, scheduleId);
+  }
 }
