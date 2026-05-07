@@ -31,7 +31,20 @@ export class AttendanceController {
       (res as any).status(400).json({ error: err.message });
     }
   }
+  async getRecordsBySchedule(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const { scheduleId } = req.params;
 
+      if (!scheduleId) return (res as any).status(400).json({ error: 'ID de turno requerido' });
+
+      const records = await service.getAttendanceRecordsBySchedule(user.company_id, scheduleId);
+      (res as any).json(records);
+    } catch (err: any) {
+      console.error('[AttendanceController] Error fetching records by schedule:', err);
+      (res as any).status(500).json({ error: err.message });
+    }
+  }
   async markWithPin(req: Request, res: Response) {
     try {
       const user = (req as any).user; 
