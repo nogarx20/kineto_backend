@@ -38,7 +38,7 @@ export class AttendanceController {
 
       if (!scheduleId) return (res as any).status(400).json({ error: 'ID de turno requerido' });
 
-      const records = await service.getAttendanceRecordsBySchedule(user.company_id, scheduleId);
+      const records = await service.getAttendanceRecordsBySchedule(user.company_id, scheduleId as string);
       (res as any).json(records);
     } catch (err: any) {
       console.error('[AttendanceController] Error fetching records by schedule:', err);
