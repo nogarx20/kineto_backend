@@ -40,7 +40,13 @@ export class UserService {
         validLogins.push({
           token,
           companyName: user.company_name,
-          user: { id: user.id, firstName: user.first_name, lastName: user.last_name }
+          user: { 
+            id: user.id, 
+            firstName: user.first_name, 
+            lastName: user.last_name,
+            email: user.email,
+            photo: user.photo
+          }
         });
       } else {
         // Fallo: Incrementar intentos
