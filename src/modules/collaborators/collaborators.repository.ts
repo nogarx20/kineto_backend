@@ -101,7 +101,7 @@ export class CollaboratorRepository {
       (id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, photo, pin, status, is_active, onDelete)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
     `, [
-      id, 
+      id,
       company_id, 
       identification, 
       first_name, 
@@ -111,8 +111,8 @@ export class CollaboratorRepository {
       address ?? null, 
       gender, 
       birth_date ?? null, 
-      username, 
-      password, 
+      username,
+      password ?? null, // Aseguramos que 'password' sea null si es undefined
       photo ?? null, 
       pin ?? null, 
       dbStatus, 
