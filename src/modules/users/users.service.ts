@@ -34,7 +34,7 @@ export class UserService {
 
     // 4. Obtener empresas relacionadas
     // Asumimos que el repositorio devuelve [ {id, name} ] desde la tabla user_companies
-    const companies = await (this.repository as any).getRelatedCompanies(user.id);
+    const companies = await this.repository.getRelatedCompanies(user.id);
     
     if (!companies || companies.length === 0) {
       throw new Error('El usuario no tiene organizaciones asignadas.');
@@ -68,8 +68,14 @@ export class UserService {
       };
     });
 
-    if (loginOptions.length === 1) return loginOptions[0];
-    return { multiple: true, options: loginOptions };
+    // Identificar el login para la empresa por defecto (de la tabla users)
+    // Si se solicitó una empresa específica (companyId), se prioriza esa.
+    const selectedLogin = companyId 
+      ? loginOptions.find((o: any) => o.companyId === companyId)
+      : (loginOptions.find((o: any) => o.companyId === user.company_id) || loginOptions[0]);
+
+    // Devolvemos el acceso exitoso junto con todas las opciones disponibles
+    return { ...selectedLogin, options: loginOptions };
   }
 
   async createUser(data: any) {
