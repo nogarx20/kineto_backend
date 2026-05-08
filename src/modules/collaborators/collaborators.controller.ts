@@ -24,10 +24,10 @@ export class CollaboratorController {
       const user = (req as any).user;
       const body = (req as any).body;
       // Forzar activo por defecto en creación
-      const id = await service.create(user.company_id, { ...body });
+      const result = await service.create(user.company_id, { ...body });
       
-      await logAudit(req, 'CREATE', 'collaborators', id, body);
-      (res as any).status(201).json({ id });
+      await logAudit(req, 'CREATE', 'collaborators', result.id, body);
+      (res as any).status(201).json({ id: result.id });
     } catch (err: any) {
       (res as any).status(400).json({ error: err.message });
     }
