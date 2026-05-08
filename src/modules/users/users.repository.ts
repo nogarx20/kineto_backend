@@ -44,11 +44,11 @@ export class UserRepository {
         SELECT JSON_ARRAYAGG(JSON_OBJECT('id', r.id, 'name', r.name, 'is_active', r.is_active))
         FROM user_roles ur
         JOIN roles r ON ur.role_id = r.id
-        WHERE ur.user_id = u.id
+        WHERE ur.user_id = u.id AND r.company_id = ?
       ) as roles
       FROM users u 
       WHERE u.company_id = ? AND u.onDelete = 0
-    `, [companyId]);
+    `, [companyId, companyId]);
     return rows;
   }
 
