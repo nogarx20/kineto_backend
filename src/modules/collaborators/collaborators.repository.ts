@@ -100,7 +100,24 @@ export class CollaboratorRepository {
       INSERT INTO collaborators 
       (id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, photo, pin, status, is_active, onDelete)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-    `, [id, company_id, identification, first_name, last_name, email, phone, address, gender, birth_date, username, password, photo || null, pin || null, dbStatus, dbStatus === 0 ? 1 : 0]);
+    `, [
+      id, 
+      company_id, 
+      identification, 
+      first_name, 
+      last_name, 
+      email, 
+      phone ?? null, 
+      address ?? null, 
+      gender, 
+      birth_date ?? null, 
+      username, 
+      password, 
+      photo ?? null, 
+      pin ?? null, 
+      dbStatus, 
+      dbStatus === 0 ? 1 : 0
+    ]);
     
     return id;
   }
@@ -117,8 +134,19 @@ export class CollaboratorRepository {
         'username = ?', 'is_active = ?', 'photo = ?', 'pin = ?', 'status = ?'
     ];
     const params: any[] = [
-        identification, first_name, last_name, email, phone, 
-        address, gender, birth_date, username, dbStatus === 0 ? 1 : 0, photo || null, pin || null, dbStatus
+        identification, 
+        first_name, 
+        last_name, 
+        email, 
+        phone ?? null, 
+        address ?? null, 
+        gender, 
+        birth_date ?? null, 
+        username, 
+        dbStatus === 0 ? 1 : 0, 
+        photo ?? null, 
+        pin ?? null, 
+        dbStatus
     ];
 
     if (password !== undefined && password !== null && password !== '') {
@@ -170,7 +198,24 @@ export class CollaboratorRepository {
       INSERT INTO contracts 
       (id, company_id, collaborator_id, cost_center_id, marking_zone_id, contract_code, start_date, end_date, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime, discount_lunch, status, onDelete) -- marking_zone_id se maneja como anulable
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-    `, [id, company_id, collaborator_id, cost_center_id, marking_zone_id || null, contract_code, start_date, end_date || null, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime ? 1 : 0, discount_lunch ? 1 : 0, status || 'Activo']);
+    `, [
+      id, 
+      company_id, 
+      collaborator_id, 
+      cost_center_id, 
+      marking_zone_id ?? null, 
+      contract_code, 
+      start_date, 
+      end_date ?? null, 
+      position_name, 
+      contract_type, 
+      weekly_hours, 
+      working_days, 
+      rest_days, 
+      generates_overtime ? 1 : 0, 
+      discount_lunch ? 1 : 0, 
+      status || 'Activo'
+    ]);
     
     return id;
   }
@@ -186,7 +231,22 @@ export class CollaboratorRepository {
       SET cost_center_id = ?, marking_zone_id = ?, start_date = ?, end_date = ?, position_name = ?, -- marking_zone_id se maneja como anulable
           contract_type = ?, weekly_hours = ?, working_days = ?, rest_days = ?, generates_overtime = ?, discount_lunch = ?, status = ?
       WHERE id = ? AND company_id = ?
-    `, [cost_center_id, marking_zone_id || null, start_date, end_date || null, position_name, contract_type, weekly_hours, working_days, rest_days, generates_overtime ? 1 : 0, discount_lunch ? 1 : 0, status, id, companyId]);
+    `, [
+      cost_center_id, 
+      marking_zone_id ?? null, 
+      start_date, 
+      end_date ?? null, 
+      position_name, 
+      contract_type, 
+      weekly_hours, 
+      working_days, 
+      rest_days, 
+      generates_overtime ? 1 : 0, 
+      discount_lunch ? 1 : 0, 
+      status, 
+      id, 
+      companyId
+    ]);
   }
 
   async deleteContract(id: string, companyId: string) {
