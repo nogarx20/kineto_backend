@@ -58,6 +58,7 @@ export class UserService {
         token,
         companyId: comp.id, // CRUCIAL: Añadido para que el frontend lo reconozca
         companyName: comp.name,
+        role: comp.role_name,
         user: { 
           id: user.id, 
           firstName: user.first_name, 
