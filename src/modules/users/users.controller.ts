@@ -205,19 +205,35 @@ export class UserController {
   async getEffectivePermissions(req: Request, res: Response) {
     try {
       const { id } = (req as any).params;
+      const userContext = (req as any).user;
+
+      // 1. Validar el nivel de acceso en la empresa actual (Admin vs User)
+      const [ucRows]: any = await pool.execute(
+        'SELECT role_name FROM user_companies WHERE user_id = ? AND company_id = ?',
+        [id, userContext.company_id]
+      );
+
+      // Si el perfil en la empresa es 'Admin', tiene acceso total (bypass de RBAC)
+      if (ucRows.length > 0 && ucRows[0].role_name?.toLowerCase() === 'admin') {
+        const [allPerms]: any = await pool.execute('SELECT code FROM permissions');
+        return (res as any).json(allPerms.map((p: any) => p.code));
+      }
+
+      // 2. Para usuarios normales, cargar permisos desde roles activos de la empresa y permisos directos
       const [rows]: any = await pool.execute(`
         SELECT DISTINCT p.code
         FROM permissions p
         WHERE EXISTS (
             SELECT 1 FROM role_permissions rp
             JOIN user_roles ur ON rp.role_id = ur.role_id
-            WHERE ur.user_id = ? AND rp.permission_id = p.id
+            JOIN roles r ON ur.role_id = r.id
+            WHERE ur.user_id = ? AND r.company_id = ? AND rp.permission_id = p.id AND r.is_active = 1
         )
         OR EXISTS (
             SELECT 1 FROM user_permissions up
             WHERE up.user_id = ? AND up.permission_id = p.id
         )
-      `, [id, id]);
+      `, [id, userContext.company_id, id]);
       
       const codes = rows.map((r: any) => r.code);
       (res as any).json(codes);
