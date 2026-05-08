@@ -111,7 +111,7 @@ export class CollaboratorRepository {
       address ?? null, 
       gender, 
       birth_date ?? null, 
-      username,
+      username ?? email ?? null, // Fallback al email si username no llega
       password ?? null, // Aseguramos que 'password' sea null si es undefined
       photo ?? null, 
       pin ?? null, 
@@ -142,7 +142,7 @@ export class CollaboratorRepository {
         address ?? null, 
         gender, 
         birth_date ?? null, 
-        username, 
+        username ?? email ?? null, 
         dbStatus === 0 ? 1 : 0, 
         photo ?? null, 
         pin ?? null, 
