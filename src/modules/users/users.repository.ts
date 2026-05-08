@@ -97,4 +97,15 @@ export class UserRepository {
     `, [companyId]);
     return rows[0] || { total: 0, active: 0, inactive: 0, blocked: 0 };
   }
+
+  async getRelatedCompanies(userId: string) {
+    const [rows]: any = await pool.execute(
+      `SELECT c.id, c.name 
+       FROM user_companies uc
+       JOIN companies c ON uc.company_id = c.id
+       WHERE uc.user_id = ? AND c.onDelete = 0`,
+      [userId]
+    );
+    return rows;
+  }
 }
