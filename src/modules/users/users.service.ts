@@ -9,60 +9,67 @@ export class UserService {
   private repository = new UserRepository();
 
   async authenticate(email: string, pass: string, companyId?: string) {
-    // Buscar usuarios asociados al email
-    const users = companyId 
-        ? [await this.repository.findByEmail(companyId, email)]
-        : await this.repository.findAllByEmailGlobal(email);
+    // 1. Buscar el registro único del usuario por email
+    // Asumimos que el repositorio ahora tiene findGlobalByEmail que trae datos del usuario
+    const user = await this.repository.findGlobalByEmail(email);
 
-    if (!users || users.length === 0 || !users[0]) throw new Error('Credenciales inválidas');
+    if (!user) throw new Error('Credenciales inválidas');
+    if (!user.is_active) throw new Error('Cuenta de usuario inactiva.');
+    if (user.is_locked) throw new Error('Su acceso ha sido restringido por la administración corporativa.');
 
-    const validLogins = [];
-    for (const user of users) {
-      if (!user.is_active) continue;
-
-      // RESTRICCIÓN: Verificar si el estado del usuario es bloqueado (is_locked)
-      if (user.is_locked) {
-        throw new Error('Su acceso ha sido restringido por la administración corporativa.');
+    // 2. Validar contraseña una sola vez
+    const isValid = await comparePassword(pass, user.password);
+    
+    if (!isValid) {
+      await this.repository.incrementFailedAttempts(user.id);
+      if (user.failed_attempts + 1 >= MAX_FAILED_ATTEMPTS) {
+        await this.repository.lockAccount(user.id);
+        throw new Error('La cuenta ha sido bloqueada tras 5 intentos fallidos por seguridad.');
       }
-
-      const isValid = await comparePassword(pass, user.password);
-      
-      if (isValid) {
-        // Exito: Resetear intentos si no está bloqueado
-        await this.repository.resetAttempts(user.id);
-        
-        const token = generateToken({
-          id: user.id,
-          company_id: user.company_id,
-          email: user.email
-        });
-        
-        validLogins.push({
-          token,
-          companyName: user.company_name,
-          user: { 
-            id: user.id, 
-            firstName: user.first_name, 
-            lastName: user.last_name,
-            email: user.email,
-            photo: user.photo
-          }
-        });
-      } else {
-        // Fallo: Incrementar intentos
-        await this.repository.incrementFailedAttempts(user.id);
-        
-        // Verificar si debemos bloquear por intentos fallidos
-        if (user.failed_attempts + 1 >= MAX_FAILED_ATTEMPTS) {
-          await this.repository.lockAccount(user.id);
-          throw new Error('La cuenta ha sido bloqueada tras 5 intentos fallidos por seguridad.');
-        }
-      }
+      throw new Error('Credenciales inválidas');
     }
 
-    if (validLogins.length === 0) throw new Error('Credenciales inválidas');
-    if (validLogins.length === 1) return validLogins[0];
-    return { multiple: true, options: validLogins };
+    // 3. Resetear intentos fallidos
+    await this.repository.resetAttempts(user.id);
+
+    // 4. Obtener empresas relacionadas
+    // Asumimos que el repositorio devuelve [ {id, name} ] desde la tabla user_companies
+    const companies = await (this.repository as any).getRelatedCompanies(user.id);
+    
+    if (!companies || companies.length === 0) {
+      throw new Error('El usuario no tiene organizaciones asignadas.');
+    }
+
+    // Si se especificó una empresa para login directo, filtramos
+    const targetCompanies = companyId 
+      ? companies.filter((c: any) => c.id === companyId) 
+      : companies;
+
+    if (targetCompanies.length === 0) throw new Error('No tiene acceso a la empresa seleccionada.');
+
+    const loginOptions = targetCompanies.map((comp: any) => {
+      const token = generateToken({
+        id: user.id,
+        company_id: comp.id,
+        email: user.email
+      });
+      
+      return {
+        token,
+        companyId: comp.id, // CRUCIAL: Añadido para que el frontend lo reconozca
+        companyName: comp.name,
+        user: { 
+          id: user.id, 
+          firstName: user.first_name, 
+          lastName: user.last_name,
+          email: user.email,
+          photo: user.photo
+        }
+      };
+    });
+
+    if (loginOptions.length === 1) return loginOptions[0];
+    return { multiple: true, options: loginOptions };
   }
 
   async createUser(data: any) {
