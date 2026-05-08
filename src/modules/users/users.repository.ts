@@ -100,7 +100,7 @@ export class UserRepository {
 
   async getRelatedCompanies(userId: string) {
     const [rows]: any = await pool.execute(
-      `SELECT c.id, c.name 
+      `SELECT c.id, c.name, uc.role_name 
        FROM user_companies uc
        JOIN companies c ON uc.company_id = c.id
        WHERE uc.user_id = ? AND c.onDelete = 0`,
