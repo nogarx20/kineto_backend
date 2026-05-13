@@ -69,9 +69,9 @@ export class ShiftController {
       // RESTRICCIÓN: Verificar referencias en turnos (Columna simple y Columna JSON)
       const [shiftUsage]: any = await pool.execute(`
         SELECT COUNT(*) as count FROM shifts 
-        WHERE (marking_zone_id = ? OR (JSON_VALID(marking_zones_json) AND JSON_CONTAINS(marking_zones_json, JSON_QUOTE(?))))
+        WHERE (JSON_VALID(marking_zones_json) AND JSON_CONTAINS(marking_zones_json, JSON_QUOTE(?)))
         AND company_id = ? AND onDelete = 0
-      `, [id, id, user.company_id]);
+      `, [id, user.company_id]);
 
       // RESTRICCIÓN: Verificar referencias en marcajes de asistencia
       const [attendanceUsage]: any = await pool.execute(
@@ -171,7 +171,7 @@ export class ShiftController {
       ]);
 
       const changes: any = {};
-      const fields = ['name', 'prefix', 'shift_type', 'start_time', 'end_time', 'marking_zone_id', 'is_active', 'is_automatic_marking'];
+      const fields = ['name', 'prefix', 'shift_type', 'start_time', 'end_time', 'is_active', 'is_automatic_marking'];
       fields.forEach(f => {
         if (oldData && oldData[f] != body[f]) {
           changes[f] = { from: oldData[f], to: body[f] };
