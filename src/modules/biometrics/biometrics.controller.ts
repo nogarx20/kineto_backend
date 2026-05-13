@@ -26,7 +26,12 @@ export class BiometricController {
       (res as any).json(result);
     } catch (err: any) {
       await logAudit(req, 'FACEID_IDENTIFY_FAILED', 'attendance', undefined, { error: err.message });
-      (res as any).status(401).json({ code: 'MATCH_FAILED', message: err.message });
+      
+      // Diferenciar entre error de coincidencia y otros errores operativos
+      const isMatchError = err.message.includes('Identidad no reconocida');
+      const status = isMatchError ? 401 : 400;
+      
+      (res as any).status(status).json({ error: err.message, code: isMatchError ? 'MATCH_FAILED' : 'BIOMETRIC_ERROR' });
     }
   };
 
