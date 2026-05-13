@@ -70,7 +70,10 @@ export class BiometricService {
     const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
 
     const [schedules]: any = await pool.execute(
-        `SELECT sh.*, s.date as schedule_date, s.id as schedule_id, s.marking_zone_id 
+        `SELECT 
+            sh.id, sh.name, sh.prefix, sh.start_time, sh.end_time, sh.start_time_2, sh.end_time_2, 
+            sh.shift_type, sh.entry_start_buffer, sh.entry_end_buffer, sh.exit_start_buffer, sh.exit_end_buffer,
+            s.date as schedule_date, s.id as schedule_id, s.marking_zone_id 
          FROM schedules s 
          JOIN shifts sh ON s.shift_id = sh.id 
          WHERE s.collaborator_id = ? AND s.date IN (?, ?) AND s.onDelete = 0
