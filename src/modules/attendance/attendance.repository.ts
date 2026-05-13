@@ -60,7 +60,7 @@ export class AttendanceRepository {
 
   async findTodaySchedule(companyId: string, collaboratorId: string) {
     const [rows]: any = await pool.execute(`
-      SELECT s.*, sh.start_time, sh.end_time, sh.entry_start_buffer, sh.entry_end_buffer, sh.marking_zone_id, sh.name as shift_name
+      SELECT s.*, sh.start_time, sh.end_time, sh.entry_start_buffer, sh.entry_end_buffer, sh.name as shift_name
       FROM schedules s
       JOIN shifts sh ON s.shift_id = sh.id
       WHERE s.company_id = ? AND s.collaborator_id = ? AND s.date = CURDATE()
