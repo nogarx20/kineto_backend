@@ -70,7 +70,7 @@ export class BiometricService {
     const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
 
     const [schedules]: any = await pool.execute(
-        `SELECT sh.*, s.date as schedule_date, s.id as schedule_id 
+        `SELECT sh.*, s.date as schedule_date, s.id as schedule_id, s.marking_zone_id 
          FROM schedules s 
          JOIN shifts sh ON s.shift_id = sh.id 
          WHERE s.collaborator_id = ? AND s.date IN (?, ?) AND s.onDelete = 0
@@ -149,17 +149,23 @@ export class BiometricService {
 
     // Validamos geocerca contra el turno encontrado
     if (currentShift && coords && coords.lat && coords.lat !== 0) {
-        const [zones]: any = await pool.query(
-            'SELECT name, lat, lng, radius FROM marking_zones WHERE id = ? AND onDelete = 0 AND is_active = 1',
-            [currentShift.marking_zone_id]
-        );
+        if (currentShift.marking_zone_id) {
+            const [zones]: any = await pool.query(
+                'SELECT name, lat, lng, radius FROM marking_zones WHERE id = ? AND onDelete = 0 AND is_active = 1',
+                [currentShift.marking_zone_id]
+            );
 
-        geofenceResults = zones.map((z: any) => {
-            const dist = this.calculateHaversineDistance(coords.lat, coords.lng, Number(z.lat), Number(z.lng));
-            const inside = dist <= Number(z.radius);
-            if (inside) { zoneMatch = true; matchedZoneName = z.name; }
-            return { name: z.name, isInside: inside, distance: Math.round(dist), radius: z.radius };
-        });
+            geofenceResults = zones.map((z: any) => {
+                const dist = this.calculateHaversineDistance(coords.lat, coords.lng, Number(z.lat), Number(z.lng));
+                const inside = dist <= Number(z.radius);
+                if (inside) { zoneMatch = true; matchedZoneName = z.name; }
+                return { name: z.name, isInside: inside, distance: Math.round(dist), radius: z.radius };
+            });
+        } else {
+            // Si no hay geocerca específica asignada en la programación, se permite el marcaje en cualquier lugar
+            zoneMatch = true; 
+            matchedZoneName = 'Sin restricción geográfica'; 
+        }
     }
 
     const markingResult = await this.attendanceService.registerMarking(companyId, bestMatch.identification, coords?.lat, coords?.lng);
