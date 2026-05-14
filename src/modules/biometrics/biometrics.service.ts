@@ -42,10 +42,10 @@ export class BiometricService {
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
     const inputDescriptor = this.normalizeDescriptor(inputRawDescriptor);
     const [templates]: any = await pool.execute(
-      `SELECT b.*, c.identification, c.first_name, c.last_name, c.photo, c.email, c.phone, 
-              (SELECT name FROM positions WHERE id = c.position_id) as position_name 
+      `SELECT b.*, c.identification, c.first_name, c.last_name, c.photo, c.email, c.phone, con.position_name as position_name 
        FROM collaborator_biometrics b 
        JOIN collaborators c ON b.collaborator_id = c.id 
+       LEFT JOIN contracts con ON con.collaborator_id = c.id AND con.onDelete = 0 AND con.status = 'Activo'
        WHERE b.company_id = ? AND c.is_active = 1`,
       [companyId] 
     );
