@@ -42,10 +42,10 @@ export class BiometricService {
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
     const inputDescriptor = this.normalizeDescriptor(inputRawDescriptor);
     const [templates]: any = await pool.execute(
-      `SELECT b.*, c.identification, c.first_name, c.last_name, c.photo, c.email, c.phone, con.position_name as position_name 
+      `SELECT b.*, c.identification, c.first_name, c.last_name, c.photo, c.email, c.phone, 
+              (SELECT position_name FROM contracts WHERE collaborator_id = c.id AND onDelete = 0 AND status = 'Activo' LIMIT 1) as position_name
        FROM collaborator_biometrics b 
        JOIN collaborators c ON b.collaborator_id = c.id 
-       LEFT JOIN contracts con ON con.collaborator_id = c.id AND con.onDelete = 0 AND con.status = 'Activo'
        WHERE b.company_id = ? AND c.is_active = 1`,
       [companyId] 
     );
@@ -153,6 +153,7 @@ export class BiometricService {
     let zoneMatch = false;
     let geofenceResults: any[] = [];
     let matchedZoneName = null;
+    let assignedZoneName = 'Sin geocerca';
 
     // Validamos geocerca contra el turno encontrado
     if (currentShift && coords && coords.lat && coords.lat !== 0) {
@@ -168,10 +169,13 @@ export class BiometricService {
                 if (inside) { zoneMatch = true; matchedZoneName = z.name; }
                 return { name: z.name, isInside: inside, distance: Math.round(dist), radius: z.radius };
             });
+            
+            if (zones.length > 0) assignedZoneName = zones[0].name;
         } else {
             // Si no hay geocerca específica asignada en la programación, se permite el marcaje en cualquier lugar
             zoneMatch = true; 
             matchedZoneName = 'Sin restricción geográfica'; 
+            assignedZoneName = 'Ubicación Libre';
         }
     }
 
@@ -209,7 +213,8 @@ export class BiometricService {
         validation: {
             has_schedule: !!currentShift, // Indica si existe turno hoy
             shift_match: timeMatch,
-            zone_match: currentShift ? zoneMatch : false
+            zone_match: currentShift ? zoneMatch : false,
+            assigned_zone_name: assignedZoneName
         },
         geofence_results: geofenceResults,
         zone_name: matchedZoneName || (geofenceResults.length > 0 ? 'Fuera de Cobertura' : 'Sin Zona'),
