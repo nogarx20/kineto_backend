@@ -24,7 +24,9 @@ export class SchedulingService {
     
     const existingOnDate = await this.repository.findByCollaboratorAndDate(companyId, collaboratorId, date);
     if (existingOnDate && await this.repository.hasAttendance(existingOnDate.id)) {
-        throw new Error("Acción Denegada: El turno actual ya posee registros de asistencia y no puede ser modificado.");
+        if (existingOnDate.is_automatic_marking !== 1) {
+            throw new Error("Acción Denegada: El turno actual ya posee registros de asistencia manuales o biométricos y no puede ser modificado.");
+        }
     }
 
     // Validar contrato activo y obtener tipo de turno para reglas de negocio
@@ -93,7 +95,7 @@ export class SchedulingService {
         }
     }
 
-    const scheduleId = id || generateUUID();
+    const scheduleId = id || (existingOnDate ? existingOnDate.id : generateUUID());
     await this.repository.createOrUpdate({
       id: scheduleId,
       company_id: companyId,
@@ -103,7 +105,51 @@ export class SchedulingService {
       marking_zone_id: finalZoneId,
       date
     });
+
+    // Gestionar marcajes automáticos
+    if (newShift && newShift.is_automatic_marking == 1) {
+        await this.manageAutoMarkings(scheduleId, companyId, collaboratorId, date, newShift);
+    } else if (existingOnDate && existingOnDate.is_automatic_marking == 1) {
+        // Si cambiamos de un turno automático a uno manual, limpiamos los marcajes generados
+        await pool.execute('DELETE FROM attendance_records WHERE schedule_id = ?', [scheduleId]);
+    }
+
     return { success: true };
+  }
+
+  private async manageAutoMarkings(scheduleId: string, companyId: string, collaboratorId: string, date: string, shift: any) {
+    // Limpiar cualquier marcaje previo para evitar duplicados
+    await pool.execute('DELETE FROM attendance_records WHERE schedule_id = ?', [scheduleId]);
+
+    const markings: { time: string, type: 'IN' | 'OUT' }[] = [];
+    const baseDate = date.split('T')[0];
+
+    const formatForDB = (time: string, offsetDays = 0) => {
+        const d = new Date(`${baseDate}T${time}`);
+        if (offsetDays) d.setDate(d.getDate() + offsetDays);
+        return d.toISOString().slice(0, 19).replace('T', ' ');
+    };
+
+    // Primer segmento (Simple o Parte 1 de Partido)
+    markings.push({ time: formatForDB(shift.start_time), type: 'IN' });
+    const out1Offset = shift.end_time < shift.start_time ? 1 : 0;
+    markings.push({ time: formatForDB(shift.end_time, out1Offset), type: 'OUT' });
+
+    // Segundo segmento si es Partido
+    if (shift.shift_type === 'Partido' && shift.start_time_2 && shift.end_time_2) {
+        const in2Offset = shift.start_time_2 < shift.start_time ? 1 : 0;
+        markings.push({ time: formatForDB(shift.start_time_2, in2Offset), type: 'IN' });
+        const out2Offset = shift.end_time_2 < shift.start_time ? 1 : 0;
+        markings.push({ time: formatForDB(shift.end_time_2, out2Offset), type: 'OUT' });
+    }
+
+    for (const m of markings) {
+        await pool.execute(
+            `INSERT INTO attendance_records (id, company_id, collaborator_id, schedule_id, time, type, status, is_valid_zone) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [generateUUID(), companyId, collaboratorId, scheduleId, m.time, m.type, 'OnTime', 1]
+        );
+    }
   }
 
   async bulkAssign(companyId: string, assignments: Array<{collaboratorId: string, shiftId: string, date: string, costCenterId?: string, markingZoneId?: string}>) {
@@ -122,10 +168,18 @@ export class SchedulingService {
   }
 
   async deleteShift(companyId: string, id: string) {
+    const sched = await this.repository.findById(companyId, id);
+    if (!sched) return { success: true };
+
     // Validar si tiene asistencia antes de borrar
     const hasAttendance = await this.repository.hasAttendance(id);
     if (hasAttendance) {
-        throw new Error("Acción Denegada: No es posible eliminar una asignación que ya cuenta con registros de asistencia vinculados.");
+        if (sched.is_automatic_marking == 1) {
+            // Si es automático, permitimos borrar los marcajes generados
+            await pool.execute('DELETE FROM attendance_records WHERE schedule_id = ?', [id]);
+        } else {
+            throw new Error("Acción Denegada: No es posible eliminar una asignación que ya cuenta con registros de asistencia vinculados.");
+        }
     }
     await this.repository.delete(companyId, id);
     return { success: true };
