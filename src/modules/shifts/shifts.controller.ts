@@ -157,7 +157,8 @@ export class ShiftController {
             entry_start_buffer = ?, entry_end_buffer = ?, exit_start_buffer = ?, exit_end_buffer = ?,
             entry_start_buffer_2 = ?, entry_end_buffer_2 = ?, exit_start_buffer_2 = ?, exit_end_buffer_2 = ?,
             rounding = ?, lunch_start = ?, lunch_end = ?, is_active = ?,
-            is_automatic_marking = ?
+            is_automatic_marking = ?,
+            marking_zones_json = ?
         WHERE id = ? AND company_id = ?
       `, [
         body.name, body.prefix, body.shift_type || 'Simple',
@@ -167,11 +168,12 @@ export class ShiftController {
         body.rounding || 0, body.lunch_start || null, body.lunch_end || null,
         body.is_active === undefined ? oldData.is_active : (body.is_active ? 1 : 0),
         body.is_automatic_marking ? 1 : 0,
+        JSON.stringify(body.marking_zones_json || []),
         id, user.company_id
       ]);
 
       const changes: any = {};
-      const fields = ['name', 'prefix', 'shift_type', 'start_time', 'end_time', 'is_active', 'is_automatic_marking'];
+      const fields = ['name', 'prefix', 'shift_type', 'start_time', 'end_time', 'is_active', 'is_automatic_marking', 'marking_zones_json'];
       fields.forEach(f => {
         if (oldData && oldData[f] != body[f]) {
           changes[f] = { from: oldData[f], to: body[f] };
