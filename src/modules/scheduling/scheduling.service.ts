@@ -145,7 +145,7 @@ export class SchedulingService {
 
     for (const m of markings) {
         await pool.execute(
-            `INSERT INTO attendance_records (id, company_id, collaborator_id, schedule_id, time, type, status, is_valid_zone) 
+            `INSERT INTO attendance_records (id, company_id, collaborator_id, schedule_id, timestamp, type, status, is_valid_zone) 
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [generateUUID(), companyId, collaboratorId, scheduleId, m.time, m.type, 'OnTime', 1]
         );
