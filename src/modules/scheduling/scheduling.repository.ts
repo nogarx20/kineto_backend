@@ -57,6 +57,16 @@ export class SchedulingRepository {
     return rows[0] || { min_rest_hours: 12, max_daily_extra_hours: 2, max_weekly_extra_hours: 12 }; // Valores por defecto
   }
 
+  async findById(companyId: string, id: string) {
+    const [rows]: any = await pool.execute(`
+      SELECT s.*, sh.is_automatic_marking, sh.start_time, sh.end_time, sh.start_time_2, sh.end_time_2, sh.shift_type
+      FROM schedules s
+      JOIN shifts sh ON s.shift_id = sh.id
+      WHERE s.id = ? AND s.company_id = ? AND s.onDelete = 0
+    `, [id, companyId]);
+    return rows[0];
+  }
+
   async createParameters(data: { id: string, company_id: string, user_id: string, min_rest_hours: number, max_daily_extra_hours: number, max_weekly_extra_hours: number }) {
     const { id, company_id, user_id, min_rest_hours, max_daily_extra_hours, max_weekly_extra_hours } = data;
     await pool.execute(
@@ -68,7 +78,7 @@ export class SchedulingRepository {
 
   async findByCollaboratorAndDate(companyId: string, collaboratorId: string, date: string) {
     const [rows]: any = await pool.execute(`
-      SELECT s.*, sh.start_time, sh.end_time, sh.start_time_2, sh.end_time_2, sh.shift_type
+      SELECT s.*, sh.start_time, sh.end_time, sh.start_time_2, sh.end_time_2, sh.shift_type, sh.is_automatic_marking
       FROM schedules s
       JOIN shifts sh ON s.shift_id = sh.id
       WHERE s.company_id = ? AND s.collaborator_id = ? AND s.date = ? AND s.onDelete = 0
