@@ -162,27 +162,28 @@ export class BiometricService {
     }
 
     // --- Lógica Geográfica Relacional ---
-    let zoneMatch = false;
-    let geofenceResults: any[] = [];
-    let matchedZoneName = null;
-    let assignedZoneName = 'Sin geocerca';
+    let zoneMatch = false; // This will be passed to attendance service as isValidZone
+    const geofenceResults: any[] = []; // For frontend feedback
+    let matchedZoneName = null; // For frontend feedback
+    let assignedZoneName = 'Sin geocerca'; // For frontend feedback
 
     // Validamos geocerca contra el turno encontrado
     if (currentShift && coords && coords.lat && coords.lat !== 0) {
         if (currentShift.marking_zone_id) {
-            const [zones]: any = await pool.query(
-                'SELECT name, lat, lng, radius FROM marking_zones WHERE id = ? AND onDelete = 0 AND is_active = 1',
-                [currentShift.marking_zone_id]
-            );
-
-            geofenceResults = zones.map((z: any) => {
-                const dist = this.calculateHaversineDistance(coords.lat, coords.lng, Number(z.lat), Number(z.lng));
-                const inside = dist <= Number(z.radius);
-                if (inside) { zoneMatch = true; matchedZoneName = z.name; }
-                return { name: z.name, isInside: inside, distance: Math.round(dist), radius: z.radius };
-            });
-            
-            if (zones.length > 0) assignedZoneName = zones[0].name;
+            const [zones]: any = await pool.query('SELECT name, lat, lng, radius, zone_type, bounds FROM marking_zones WHERE id = ? AND onDelete = 0 AND is_active = 1', [currentShift.marking_zone_id]);
+            if (zones.length > 0) {
+                const zone = zones[0];
+                if (zone.zone_type === 'circle' || !zone.zone_type) {
+                    const dist = this.calculateHaversineDistance(coords.lat, coords.lng, Number(zone.lat), Number(zone.lng));
+                    zoneMatch = dist <= Number(zone.radius);
+                } else if (zone.zone_type === 'rectangle' || zone.zone_type === 'square') {
+                    const bounds = typeof zone.bounds === 'string' ? JSON.parse(zone.bounds) : zone.bounds;
+                    zoneMatch = (coords.lat >= bounds.south && coords.lat <= bounds.north && coords.lng >= bounds.west && coords.lng <= bounds.east);
+                }
+                if (zoneMatch) { matchedZoneName = zone.name; }
+                assignedZoneName = zone.name;
+                geofenceResults.push({ name: zone.name, isInside: zoneMatch, distance: zone.zone_type === 'circle' ? Math.round(this.calculateHaversineDistance(coords.lat, coords.lng, Number(zone.lat), Number(zone.lng))) : null, radius: zone.radius });
+            }
         } else {
             // Si no hay geocerca específica asignada en la programación, se permite el marcaje en cualquier lugar
             zoneMatch = true; 
@@ -190,31 +191,9 @@ export class BiometricService {
             assignedZoneName = 'Ubicación Libre';
         }
     }
-
-    // Determinar los valores para el registro de marcaje
-    let scheduleIdToPass: string | null = null;
-    let typeToPass: 'IN' | 'OUT' | 'N/A' = 'N/A';
-    let statusToPass: string = 'Unknown';
-    let markingZoneIdToPass: string | null = null;
-    let isValidZoneToPass: boolean = false;
-
-    if (currentShift) {
-        scheduleIdToPass = currentShift.schedule_id;
-        typeToPass = detectedType;
-        markingZoneIdToPass = currentShift.marking_zone_id;
-        isValidZoneToPass = zoneMatch;
-
-        if (timeMatch && zoneMatch) {
-            statusToPass = 'OnTime';
-        } else if (timeMatch && !zoneMatch) {
-            statusToPass = 'ZoneMismatch'; // Marcaje a tiempo, pero fuera de zona
-        } else if (!timeMatch && zoneMatch) {
-            statusToPass = 'OutOfTime'; // Marcaje en zona, pero fuera de tiempo
-        } else { // !timeMatch && !zoneMatch
-            statusToPass = 'Unknown'; // Marcaje fuera de tiempo y fuera de zona
-        }
-    }
-    // Si currentShift es null, los valores iniciales (null, 'N/A', 'Unknown', null, false) se mantienen.
+    // The attendance service will determine the final status (OnTime, Late, EarlyDeparture, EarlyEntry)
+    // and also the isValidZone based on the markingZoneIdToPass and lat/lng.
+    // We pass the raw data and let attendance.service handle the full validation.
 
     const markingResult = await this.attendanceService.registerMarking(
         companyId,
@@ -222,11 +201,11 @@ export class BiometricService {
             identification: bestMatch.identification,
             lat: coords?.lat,
             lng: coords?.lng,
-            scheduleId: scheduleIdToPass,
-            type: typeToPass,
-            status: statusToPass,
-            markingZoneId: markingZoneIdToPass,
-            isValidZone: isValidZoneToPass
+            scheduleId: currentShift?.schedule_id || null,
+            type: detectedType === 'N/A' ? undefined : detectedType,
+            status: 'Unknown', // Let attendance service determine the final status
+            markingZoneId: currentShift?.marking_zone_id || null,
+            isValidZone: zoneMatch
         }
     );
     await pool.execute('UPDATE attendance_records SET biometric_validation_id = ?, biometric_score = ?, biometric_method = ? WHERE id = ?', [bestMatch.id, minDistance, 'FACE', markingResult.id]);
