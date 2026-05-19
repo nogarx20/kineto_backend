@@ -21,6 +21,7 @@ export class AttendanceService {
       isValidZone?: boolean
     }
   ) {
+    console.log(`[AttendanceService] registerMarking called for identification: ${data.identification}, type: ${data.type}, initial status: ${data.status}`);
     const { identification, lat, lng } = data;
     // 1. Identificar colaborador
     const collaborator = await this.repository.findCollaboratorByIdentification(companyId, identification);
@@ -146,6 +147,7 @@ export class AttendanceService {
     // 7. Guardar marcaje
     // Asegurarse de que el timestamp guardado sea el redondeado
     const id = generateUUID();
+    console.log(`[AttendanceService] Creating record with ID: ${id}, final status: ${status}`);
     await this.repository.createRecord({
         id,
         company_id: companyId,
@@ -157,7 +159,8 @@ export class AttendanceService {
         marking_zone_id: markingZoneId,
         is_valid_zone: isValidZone,
         status
-    });
+    }); // This is the only place createRecord is called
+    console.log(`[AttendanceService] Record ${id} created successfully.`);
 
     return { 
         id, 
