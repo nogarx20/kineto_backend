@@ -61,7 +61,7 @@ export class SchedulingService {
 
     // --- VALIDACIÓN DE CRUCE DE HORARIOS ---
     const params: SchedulingParameters = await this.repository.getParameters(companyId);
-    const [targetShiftData]: any = await pool.execute('SELECT * FROM shifts WHERE id = ?', [shiftId]);
+    const [targetShiftData]: any = await connection.execute('SELECT * FROM shifts WHERE id = ?', [shiftId]);
     const newShift = targetShiftData[0];
 
     if (newShift.shift_type !== 'Descanso') {
@@ -114,7 +114,16 @@ export class SchedulingService {
 
     // Gestionar marcajes automáticos
     if (newShift && newShift.is_automatic_marking == 1) {
-        await this.manageAutoMarkings(scheduleId, companyId, collaboratorId, date, newShift, connection);
+        let finalLat = null;
+        let finalLng = null;
+        if (finalZoneId) {
+            const [z]: any = await connection.execute('SELECT latitude, longitude FROM marking_zones WHERE id = ?', [finalZoneId]);
+            if (z.length > 0) {
+                finalLat = z[0].latitude;
+                finalLng = z[0].longitude;
+            }
+        }
+        await this.manageAutoMarkings(scheduleId, companyId, collaboratorId, date, newShift, connection, { zoneId: finalZoneId, lat: finalLat, lng: finalLng });
     } else if (existingOnDate && existingOnDate.is_automatic_marking == 1) {
         await connection.execute('DELETE FROM attendance_records WHERE schedule_id = ?', [scheduleId]);
     }
@@ -129,7 +138,7 @@ export class SchedulingService {
     }
   }
 
-  private async manageAutoMarkings(scheduleId: string, companyId: string, collaboratorId: string, date: string, shift: any, connection: any = pool) {
+  private async manageAutoMarkings(scheduleId: string, companyId: string, collaboratorId: string, date: string, shift: any, connection: any = pool, zoneInfo?: { zoneId: string | null, lat: number | null, lng: number | null }) {
     // Limpiar cualquier marcaje previo para evitar duplicados
     await connection.execute('DELETE FROM attendance_records WHERE schedule_id = ?', [scheduleId]);
 
@@ -160,9 +169,9 @@ export class SchedulingService {
 
     for (const m of markings) {
         await connection.execute(
-            `INSERT INTO attendance_records (id, company_id, collaborator_id, schedule_id, timestamp, type, lat, lng, marking_zone_id, is_valid_zone, status, biometric_method) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [generateUUID(), companyId, collaboratorId, scheduleId, m.time, m.type, null, null, null, 1, 'OnTime', 'AUTO']
+            `INSERT INTO attendance_records (id, company_id, collaborator_id, schedule_id, timestamp, type, lat, lng, marking_zone_id, is_valid_zone, status, biometric_method, validation_method) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [generateUUID(), companyId, collaboratorId, scheduleId, m.time, m.type, zoneInfo?.lat || null, zoneInfo?.lng || null, zoneInfo?.zoneId || null, 1, 'OnTime', 'AUTOMATIC', 'MANUAL']
         );
     }
   }
