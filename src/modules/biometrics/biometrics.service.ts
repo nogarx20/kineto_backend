@@ -10,6 +10,18 @@ export class BiometricService {
   private readonly DESCRIPTOR_LENGTH = 128;
   private readonly DEFAULT_THRESHOLD = 0.55; 
 
+  // Asumimos que AttendanceService.registerMarking tiene la siguiente firma:
+  // registerMarking(
+  //   companyId: string,
+  //   identification: string,
+  //   lat?: number,
+  //   lng?: number,
+  //   scheduleId?: string | null,
+  //   type?: 'IN' | 'OUT' | 'N/A',
+  //   status?: string,
+  //   markingZoneId?: string | null,
+  //   isValidZone?: boolean
+  // ): Promise<any>;
   private normalizeDescriptor(descriptor: number[]): number[] {
     if (!Array.isArray(descriptor) || descriptor.length !== this.DESCRIPTOR_LENGTH) {
       throw new Error(`Estructura biométrica inválida: se esperan ${this.DESCRIPTOR_LENGTH} dimensiones.`);
@@ -179,7 +191,44 @@ export class BiometricService {
         }
     }
 
-    const markingResult = await this.attendanceService.registerMarking(companyId, bestMatch.identification, coords?.lat, coords?.lng);
+    // Determinar los valores para el registro de marcaje
+    let scheduleIdToPass: string | null = null;
+    let typeToPass: 'IN' | 'OUT' | 'N/A' = 'N/A';
+    let statusToPass: string = 'Unknown';
+    let markingZoneIdToPass: string | null = null;
+    let isValidZoneToPass: boolean = false;
+
+    if (currentShift) {
+        scheduleIdToPass = currentShift.schedule_id;
+        typeToPass = detectedType;
+        markingZoneIdToPass = currentShift.marking_zone_id;
+        isValidZoneToPass = zoneMatch;
+
+        if (timeMatch && zoneMatch) {
+            statusToPass = 'OnTime';
+        } else if (timeMatch && !zoneMatch) {
+            statusToPass = 'ZoneMismatch'; // Marcaje a tiempo, pero fuera de zona
+        } else if (!timeMatch && zoneMatch) {
+            statusToPass = 'OutOfTime'; // Marcaje en zona, pero fuera de tiempo
+        } else { // !timeMatch && !zoneMatch
+            statusToPass = 'Unknown'; // Marcaje fuera de tiempo y fuera de zona
+        }
+    }
+    // Si currentShift es null, los valores iniciales (null, 'N/A', 'Unknown', null, false) se mantienen.
+
+    const markingResult = await this.attendanceService.registerMarking(
+        companyId,
+        {
+            identification: bestMatch.identification,
+            lat: coords?.lat,
+            lng: coords?.lng,
+            scheduleId: scheduleIdToPass,
+            type: typeToPass,
+            status: statusToPass,
+            markingZoneId: markingZoneIdToPass,
+            isValidZone: isValidZoneToPass
+        }
+    );
     await pool.execute('UPDATE attendance_records SET biometric_validation_id = ?, biometric_score = ?, biometric_method = ? WHERE id = ?', [bestMatch.id, minDistance, 'FACE', markingResult.id]);
 
     return { 
@@ -239,8 +288,30 @@ export class BiometricService {
         threshold = parsed.faceIdThreshold || this.DEFAULT_THRESHOLD;
     }
     if (distance > threshold) throw new Error('Validación Biométrica Fallida.');
-    const markingResult = await this.attendanceService.registerMarking(companyId, identification, coords?.lat, coords?.lng);
-    await pool.execute('UPDATE attendance_records SET biometric_validation_id = ?, biometric_score = ? WHERE id = ?', [storedBio.id, distance, markingResult.id]);
+
+    // Para verifyAndMark, asumimos que si llega hasta aquí, la biometría es exitosa.
+    // Sin embargo, no tenemos la lógica de turno/geocerca aquí, por lo que pasamos null/N/A/Unknown
+    // y el attendanceService deberá determinar el resto.
+    // Si se necesita la validación completa de turno/geocerca, se debería usar identifyAndMark.
+    const markingResult = await this.attendanceService.registerMarking(
+      companyId,
+      {
+        identification: identification,
+        lat: coords?.lat,
+        lng: coords?.lng,
+        scheduleId: null,
+        type: 'N/A',
+        status: 'Unknown',
+        markingZoneId: null,
+        isValidZone: false
+      }
+    );
+
+    await pool.execute(
+        'UPDATE attendance_records SET biometric_validation_id = ?, biometric_score = ?, biometric_method = ? WHERE id = ?',
+        [storedBio.id, distance, 'FACE', markingResult.id]
+    );
+
     return { ...markingResult, confidence: (1 - distance).toFixed(4), match: true };
   }
 
