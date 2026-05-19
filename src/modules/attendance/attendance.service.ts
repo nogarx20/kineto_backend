@@ -15,7 +15,7 @@ export class AttendanceService {
       lat?: number, 
       lng?: number,
       scheduleId?: string | null,
-      type?: 'IN' | 'OUT' | 'N/A',
+      type?: 'IN' | 'OUT' | 'N/A' | undefined,
       status?: string,
       markingZoneId?: string | null,
       isValidZone?: boolean
@@ -31,54 +31,66 @@ export class AttendanceService {
         throw new Error('El perfil del colaborador se encuentra inhabilitado.');
     }
 
-    // 2. Verificar Contrato Activo
-    const activeContract = await this.repository.findActiveContract(collaborator.id, companyId);
-    if (!activeContract) {
-        throw new Error('Acceso Denegado: No se detectó un contrato laboral activo para este colaborador.');
-    }
-    
     const [schedulingParams, companySettings] = await Promise.all([
         this.repository.getSchedulingParameters(companyId),
         this.repository.getCompanySettings(companyId)
     ]);
 
     const tolerance = parseInt(companySettings.travelTolerance) || 0;
-
-    let type = data.type;
+    const type: 'IN' | 'OUT' | 'N/A' = data.type || 'N/A';
     let scheduleId = data.scheduleId;
     let status = data.status || 'Unknown';
     let markingZoneId = data.markingZoneId;
-    let isValidZone = data.isValidZone;
+    let isValidZone = data.isValidZone ?? false;
 
-    // Helper para redondear la hora del marcaje
-    const roundTime = (time: Date, minutes: number): Date => {
-        if (minutes === 0) return time;
-        const ms = time.getTime();
-        const roundedMs = Math.round(ms / (minutes * 60 * 1000)) * (minutes * 60 * 1000);
-        return new Date(roundedMs);
-    };
+    const now = new Date();
+    const roundedMarkingTime = this.roundTime(now, schedulingParams.rounding_minutes || 0);
 
-    const roundedMarkingTime = roundTime(new Date(), schedulingParams.rounding_minutes || 0);
-
-    // 3. Determinar tipo (IN/OUT) si no viene pre-validado
-    if (type === undefined) {
-        const records = await this.repository.findTodayRecords(companyId, collaborator.id);
-        const lastRecord = records[0];
-        type = (!lastRecord || lastRecord.type === 'OUT') ? 'IN' : 'OUT';
+    // --- PASO 1: RECONOCIMIENTO (Validado previamente por BiometricService) ---
+    if (status === 'NoRecognition') {
+        const id = generateUUID();
+        await this.repository.createRecord({
+            id,
+            company_id: companyId,
+            collaborator_id: collaborator.id,
+            schedule_id: null,
+            type: 'N/A',
+            lat,
+            lng,
+            status: 'NoRecognition'
+        });
+        return { id, type: 'N/A', status: 'NoRecognition', collaboratorName: `${collaborator.first_name} ${collaborator.last_name}`, time: roundedMarkingTime.toISOString() };
     }
 
-    // 4. Buscar programación si no viene pre-validada
+    // --- PASO 2: ASIGNACIÓN DE TURNO ---
     let schedule = null;
-    if (scheduleId === undefined) {
+    if (!scheduleId) {
         schedule = await this.repository.findTodaySchedule(companyId, collaborator.id);
         scheduleId = schedule?.id || null;
     }
     
-    // 5. Validar Geovalla
-    if (markingZoneId === undefined && isValidZone === undefined) {
+    if (!scheduleId) {
+        const id = generateUUID();
+        await this.repository.createRecord({
+            id,
+            company_id: companyId,
+            collaborator_id: collaborator.id,
+            schedule_id: null,
+            type: 'N/A',
+            lat,
+            lng,
+            marking_zone_id: null,
+            is_valid_zone: false,
+            status: 'NoTurn'
+        });
+        return { id, type: 'N/A', status: 'NoTurn', collaboratorName: `${collaborator.first_name} ${collaborator.last_name}`, time: roundedMarkingTime.toISOString() };
+    }
+    
+    // --- PASO 3: GEOVALLA ---
+    // Si el biometricService no envió validación de zona, la hacemos aquí
+    if (data.isValidZone === undefined) {
         markingZoneId = null;
         isValidZone = false;
-
         if (lat && lng) {
         const zones = await this.shiftRepository.findAllZones(companyId);
         for (const zone of zones) {
@@ -194,4 +206,12 @@ export class AttendanceService {
   async getAttendanceRecordsBySchedule(companyId: string, scheduleId: string) {
     return await this.repository.findByScheduleId(companyId, scheduleId);
   }
+
+  private roundTime(date: Date, minutes: number): Date {
+    if (!minutes || minutes <= 0) return new Date(date);
+    const ms = 1000 * 60 * minutes;
+    const rounded = new Date(Math.round(date.getTime() / ms) * ms);
+    return rounded;
+  }
+
 }
