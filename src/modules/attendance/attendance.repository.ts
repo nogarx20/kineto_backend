@@ -107,4 +107,13 @@ export class AttendanceRepository {
     `, [companyId, scheduleId]);
     return rows;
   }
+
+  async getSchedulingParameters(companyId: string) {
+    const [rows]: any = await pool.execute(`
+      SELECT rounding_minutes
+      FROM scheduling_parameters
+      WHERE company_id = ?
+    `, [companyId]);
+    return rows[0] || { rounding_minutes: 0 }; // Valor por defecto si no hay configuración
+  }
 }
