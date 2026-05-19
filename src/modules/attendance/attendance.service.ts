@@ -1,6 +1,7 @@
 
 import { AttendanceRepository } from './attendance.repository';
 import { ShiftRepository } from '../shifts/shifts.repository';
+import { ShiftService } from '../shifts/shifts.service';
 import { generateUUID } from '../../utils/uuid';
 
 export class AttendanceService {
@@ -34,12 +35,23 @@ export class AttendanceService {
     if (!activeContract) {
         throw new Error('Acceso Denegado: No se detectó un contrato laboral activo para este colaborador.');
     }
+    const schedulingParams = await this.repository.getSchedulingParameters(companyId);
 
     let type = data.type;
     let scheduleId = data.scheduleId;
     let status = data.status || 'Unknown';
     let markingZoneId = data.markingZoneId;
     let isValidZone = data.isValidZone;
+
+    // Helper para redondear la hora del marcaje
+    const roundTime = (time: Date, minutes: number): Date => {
+        if (minutes === 0) return time;
+        const ms = time.getTime();
+        const roundedMs = Math.round(ms / (minutes * 60 * 1000)) * (minutes * 60 * 1000);
+        return new Date(roundedMs);
+    };
+
+    const roundedMarkingTime = roundTime(new Date(), schedulingParams.rounding_minutes || 0);
 
     // 3. Determinar tipo (IN/OUT) si no viene pre-validado
     if (type === undefined) {
@@ -94,20 +106,45 @@ export class AttendanceService {
     }
 
     // 6. Calcular estado puntualidad
-    if (status === 'Unknown' && scheduleId && type === 'IN') {
+    if (status === 'Unknown' && scheduleId) {
         const targetSchedule = schedule || await this.repository.findTodaySchedule(companyId, collaborator.id);
-        if (targetSchedule && targetSchedule.start_time) {
-            const now = new Date();
-            const [hours, minutes] = targetSchedule.start_time.split(':');
-        const entryTime = new Date();
-        entryTime.setHours(parseInt(hours), parseInt(minutes), 0);
-            entryTime.setMinutes(entryTime.getMinutes() + (targetSchedule.entry_buffer_minutes || 0));
-        
-        status = now > entryTime ? 'Late' : 'OnTime';
+        if (targetSchedule) {
+            const shiftStartTime = new Date(`${roundedMarkingTime.toISOString().split('T')[0]}T${targetSchedule.start_time}`);
+            const shiftEndTime = new Date(`${roundedMarkingTime.toISOString().split('T')[0]}T${targetSchedule.end_time}`);
+
+            // Ajustar shiftEndTime si el turno cruza la medianoche
+            if (shiftEndTime < shiftStartTime) {
+                shiftEndTime.setDate(shiftEndTime.getDate() + 1);
+            }
+
+            if (type === 'IN') {
+                const entryWindowStart = new Date(shiftStartTime.getTime() - (targetSchedule.entry_start_buffer * 60 * 1000));
+                const entryWindowEnd = new Date(shiftStartTime.getTime() + (targetSchedule.entry_end_buffer * 60 * 1000));
+
+                if (roundedMarkingTime < entryWindowStart) {
+                    status = 'EarlyEntry';
+                } else if (roundedMarkingTime > entryWindowEnd) {
+                    status = 'Late';
+                } else {
+                    status = 'OnTime';
+                }
+            } else if (type === 'OUT') {
+                const exitWindowStart = new Date(shiftEndTime.getTime() - (targetSchedule.exit_start_buffer * 60 * 1000));
+                const exitWindowEnd = new Date(shiftEndTime.getTime() + (targetSchedule.exit_end_buffer * 60 * 1000));
+
+                if (roundedMarkingTime < exitWindowStart) {
+                    status = 'EarlyDeparture';
+                } else if (roundedMarkingTime > exitWindowEnd) {
+                    status = 'Late'; // O Overtime si se implementa como un estado separado
+                } else {
+                    status = 'OnTime';
+                }
+            }
         }
     }
 
     // 7. Guardar marcaje
+    // Asegurarse de que el timestamp guardado sea el redondeado
     const id = generateUUID();
     await this.repository.createRecord({
         id,
@@ -115,8 +152,8 @@ export class AttendanceService {
         collaborator_id: collaborator.id,
         schedule_id: scheduleId,
         type,
-        lat,
-        lng,
+        lat, // Se mantiene el lat/lng original para trazabilidad
+        lng, // Se mantiene el lat/lng original para trazabilidad
         marking_zone_id: markingZoneId,
         is_valid_zone: isValidZone,
         status
@@ -126,8 +163,8 @@ export class AttendanceService {
         id, 
         type, 
         status, 
-        collaboratorName: `${collaborator.first_name} ${collaborator.last_name}`,
-        time: new Date() 
+        collaboratorName: `${collaborator.first_name} ${collaborator.last_name}`, // Se devuelve el nombre completo
+        time: roundedMarkingTime.toISOString() // Se devuelve la hora redondeada
     };
   }
 
