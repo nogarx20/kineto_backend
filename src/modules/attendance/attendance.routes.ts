@@ -9,9 +9,7 @@ const controller = new AttendanceController();
 
 router.use(authMiddleware, tenantMiddleware);
 
-// Endpoint para realizar marcaje
-router.post('/mark', rbacMiddleware('attendance.create'), controller.mark);
-router.post('/mark-pin', rbacMiddleware('attendance.create'), controller.markWithPin);
+router.post('/mark', rbacMiddleware('attendance.mark'), controller.mark);
 router.get('/schedule/:scheduleId/records', rbacMiddleware('attendance.view'), controller.getRecordsBySchedule);
 
 export default router;
