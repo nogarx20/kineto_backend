@@ -40,7 +40,7 @@ export class BiometricController {
       const user = (req as any).user;
       const { identification, descriptor, lat, lng } = (req as any).body;
       const result = await service.verifyAndMark(user.company_id, identification, descriptor, { lat, lng });
-      await logAudit(req, 'FACEID_MARK_SUCCESS', 'attendance', result.id, { identification, confidence: result.confidence });
+      await logAudit(req, 'FACEID_MARK_SUCCESS', 'attendance', result.id, { identification, confidence: (result as any).confidence });
       (res as any).json(result);
     } catch (err: any) {
       (res as any).status(401).json({ error: err.message });
