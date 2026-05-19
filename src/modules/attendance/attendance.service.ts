@@ -116,8 +116,10 @@ export class AttendanceService {
     if (status === 'Unknown' && scheduleId) {
         const targetSchedule = schedule || await this.repository.findTodaySchedule(companyId, collaborator.id);
         if (targetSchedule) {
-            const shiftStartTime = new Date(`${roundedMarkingTime.toISOString().split('T')[0]}T${targetSchedule.start_time}`);
-            const shiftEndTime = new Date(`${roundedMarkingTime.toISOString().split('T')[0]}T${targetSchedule.end_time}`);
+            // Obtener la fecha local de la operación (Colombia) para evitar saltos de día por UTC
+            const dateRef = roundedMarkingTime.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+            const shiftStartTime = new Date(`${dateRef}T${targetSchedule.start_time}-05:00`);
+            const shiftEndTime = new Date(`${dateRef}T${targetSchedule.end_time}-05:00`);
 
             // Ajustar shiftEndTime si el turno cruza la medianoche
             if (shiftEndTime < shiftStartTime) {
