@@ -256,22 +256,31 @@ export class BiometricService {
     const [collab]: any = await pool.execute('SELECT id, is_active FROM collaborators WHERE identification = ? AND company_id = ?', [identification, companyId]);
     if (!collab.length) throw new Error('Identidad no reconocida.');
     if (!collab[0].is_active) throw new Error('Usuario inactivo.');
+    
     const storedBio = await this.repository.getTemplateByCollaborator(companyId, collab[0].id);
     if (!storedBio) throw new Error('No se ha registrado una firma facial.');
+    
     const storedDescriptor = typeof storedBio.biometric_template === 'string' ? JSON.parse(storedBio.biometric_template) : storedBio.biometric_template;
     const distance = this.calculateEuclideanDistance(inputDescriptor, storedDescriptor);
+    
     let threshold = this.DEFAULT_THRESHOLD;
     const [settings]: any = await pool.execute('SELECT settings FROM companies WHERE id = ?', [companyId]);
     if (settings.length && settings[0].settings) {
         const parsed = typeof settings[0].settings === 'string' ? JSON.parse(settings[0].settings) : settings[0].settings;
         threshold = parsed.faceIdThreshold || this.DEFAULT_THRESHOLD;
     }
-    if (distance > threshold) throw new Error('Validación Biométrica Fallida.');
 
-    // Para verifyAndMark, asumimos que si llega hasta aquí, la biometría es exitosa.
-    // Sin embargo, no tenemos la lógica de turno/geocerca aquí, por lo que pasamos null/N/A/Unknown
-    // y el attendanceService deberá determinar el resto.
-    // Si se necesita la validación completa de turno/geocerca, se debería usar identifyAndMark.
+    // Si falla la biometría, registramos con NoRecognition y salimos
+    if (distance > threshold) {
+        return await this.attendanceService.registerMarking(companyId, {
+            identification,
+            lat: coords?.lat,
+            lng: coords?.lng,
+            status: 'NoRecognition',
+            type: 'N/A'
+        });
+    }
+
     const markingResult = await this.attendanceService.registerMarking(
       companyId,
       {
