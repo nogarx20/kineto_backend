@@ -29,10 +29,10 @@ export class SchedulingRepository {
     return rows;
   }
 
-  async createOrUpdate(data: any) {
+  async createOrUpdate(data: any, connection: any = pool) {
     const { id, company_id, collaborator_id, shift_id, cost_center_id, marking_zone_id, date } = data;
     
-    await pool.execute(`
+    await connection.execute(`
       INSERT INTO schedules (id, company_id, collaborator_id, shift_id, cost_center_id, marking_zone_id, date, onDelete)
       VALUES (?, ?, ?, ?, ?, ?, ?, 0)
       ON DUPLICATE KEY UPDATE 
@@ -86,8 +86,8 @@ export class SchedulingRepository {
     return rows[0];
   }
 
-  async hasAttendance(id: string): Promise<boolean> {
-    const [rows]: any = await pool.execute('SELECT COUNT(*) as count FROM attendance_records WHERE schedule_id = ?', [id]);
+  async hasAttendance(id: string, connection: any = pool): Promise<boolean> {
+    const [rows]: any = await connection.execute('SELECT COUNT(*) as count FROM attendance_records WHERE schedule_id = ?', [id]);
     return rows[0].count > 0;
   }
 }
