@@ -18,7 +18,9 @@ export class SchedulingRepository {
         mz.name as zone_name,
         c.first_name, 
         c.last_name,
-        (SELECT COUNT(*) FROM attendance_records ar WHERE ar.schedule_id = s.id) > 0 as has_attendance
+        (SELECT COUNT(*) FROM attendance_records ar WHERE ar.schedule_id = s.id) > 0 as has_attendance,
+        (SELECT COUNT(*) FROM attendance_records ar WHERE ar.schedule_id = s.id AND ar.biometric_method != 'AUTOMATIC') > 0 as has_manual_attendance,
+        (SELECT COUNT(*) FROM attendance_records ar WHERE ar.schedule_id = s.id AND ar.biometric_method = 'AUTOMATIC') > 0 as has_automatic_attendance
       FROM schedules s
       JOIN shifts sh ON s.shift_id = sh.id
       JOIN collaborators c ON s.collaborator_id = c.id
