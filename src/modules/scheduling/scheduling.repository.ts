@@ -83,7 +83,7 @@ export class SchedulingRepository {
       SELECT s.*, sh.start_time, sh.end_time, sh.start_time_2, sh.end_time_2, sh.shift_type, sh.is_automatic_marking
       FROM schedules s
       JOIN shifts sh ON s.shift_id = sh.id
-      WHERE s.company_id = ? AND s.collaborator_id = ? AND s.date = ? AND s.onDelete = 0
+      WHERE s.company_id = ? AND s.collaborator_id = ? AND DATE(s.date) = DATE(?) AND s.onDelete = 0
     `, [companyId, collaboratorId, date]);
     return rows[0];
   }
