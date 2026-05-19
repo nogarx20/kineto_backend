@@ -24,7 +24,7 @@ export class SchedulingService {
       // 1. Obtener el ID real de la base de datos para esta fecha/colaborador
       // Esto evita el error de Foreign Key si ya existe un registro (incluso si onDelete = 1)
       const [existingRaw]: any = await connection.execute(
-        'SELECT id FROM schedules WHERE company_id = ? AND collaborator_id = ? AND date = ? LIMIT 1',
+        'SELECT id FROM schedules WHERE company_id = ? AND collaborator_id = ? AND DATE(date) = DATE(?) LIMIT 1',
         [companyId, collaboratorId, date]
       );
       const scheduleId = existingRaw.length > 0 ? existingRaw[0].id : (id || generateUUID());
@@ -36,13 +36,13 @@ export class SchedulingService {
           }
       }
 
-    // Validar contrato activo y obtener tipo de turno para reglas de negocio
+    // Validar contrato activo y obtener tipo de turno para reglas de negocio (usando DATE() para evitar fallos por componentes de tiempo)
     const [rows]: any = await connection.execute(`
       SELECT c.cost_center_id, c.marking_zone_id, sh.shift_type
       FROM contracts c
       LEFT JOIN shifts sh ON sh.id = ?
       WHERE c.collaborator_id = ? AND c.company_id = ? AND c.status = 'Activo' AND c.onDelete = 0
-      AND ? >= c.start_date AND (? <= c.end_date OR c.end_date IS NULL)
+      AND DATE(?) >= DATE(c.start_date) AND (DATE(?) <= DATE(c.end_date) OR c.end_date IS NULL)
     `, [shiftId, collaboratorId, companyId, date, date]);
 
     if (rows.length === 0) {
