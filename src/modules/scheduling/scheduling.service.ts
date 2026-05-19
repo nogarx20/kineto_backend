@@ -17,20 +17,20 @@ export class SchedulingService {
   }
 
   async assignShift(companyId: string, id: string | undefined, collaboratorId: string, shiftId: string, date: string, costCenterId?: string, markingZoneId?: string) {
-    // 1. Si estamos reasignando, validar que el turno actual no tenga marcajes
-    // If the existing schedule is the same as the new one, do nothing.
-    // This prevents unnecessary updates and potential errors if the existing one has attendance.
-    // This check is important for the quick fill actions.
-    
+    const connection = await pool.getConnection();
     const existingOnDate = await this.repository.findByCollaboratorAndDate(companyId, collaboratorId, date);
-    if (existingOnDate && await this.repository.hasAttendance(existingOnDate.id)) {
-        if (existingOnDate.is_automatic_marking !== 1) {
-            throw new Error("Acción Denegada: El turno actual ya posee registros de asistencia manuales o biométricos y no puede ser modificado.");
-        }
-    }
+
+    try {
+      await connection.beginTransaction();
+
+      if (existingOnDate && await this.repository.hasAttendance(existingOnDate.id, connection)) {
+          if (existingOnDate.is_automatic_marking !== 1) {
+              throw new Error("Acción Denegada: El turno actual ya posee registros de asistencia manuales o biométricos y no puede ser modificado.");
+          }
+      }
 
     // Validar contrato activo y obtener tipo de turno para reglas de negocio
-    const [rows]: any = await pool.execute(`
+    const [rows]: any = await connection.execute(`
       SELECT c.cost_center_id, c.marking_zone_id, sh.shift_type
       FROM contracts c
       LEFT JOIN shifts sh ON sh.id = ?
@@ -104,30 +104,39 @@ export class SchedulingService {
       cost_center_id: finalCCId,
       marking_zone_id: finalZoneId,
       date
-    });
+    }, connection);
 
     // Gestionar marcajes automáticos
     if (newShift && newShift.is_automatic_marking == 1) {
-        await this.manageAutoMarkings(scheduleId, companyId, collaboratorId, date, newShift);
+        await this.manageAutoMarkings(scheduleId, companyId, collaboratorId, date, newShift, connection);
     } else if (existingOnDate && existingOnDate.is_automatic_marking == 1) {
-        // Si cambiamos de un turno automático a uno manual, limpiamos los marcajes generados
-        await pool.execute('DELETE FROM attendance_records WHERE schedule_id = ?', [scheduleId]);
+        await connection.execute('DELETE FROM attendance_records WHERE schedule_id = ?', [scheduleId]);
     }
 
+      await connection.commit();
     return { success: true };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   }
 
-  private async manageAutoMarkings(scheduleId: string, companyId: string, collaboratorId: string, date: string, shift: any) {
+  private async manageAutoMarkings(scheduleId: string, companyId: string, collaboratorId: string, date: string, shift: any, connection: any = pool) {
     // Limpiar cualquier marcaje previo para evitar duplicados
-    await pool.execute('DELETE FROM attendance_records WHERE schedule_id = ?', [scheduleId]);
+    await connection.execute('DELETE FROM attendance_records WHERE schedule_id = ?', [scheduleId]);
 
     const markings: { time: string, type: 'IN' | 'OUT' }[] = [];
     const baseDate = date.split('T')[0];
+    const [y, month, dNum] = baseDate.split('-').map(Number);
 
     const formatForDB = (time: string, offsetDays = 0) => {
-        const d = new Date(`${baseDate}T${time}`);
+        const [h, m, s] = time.split(':').map(Number);
+        const d = new Date(y, month - 1, dNum, h, m, s || 0);
         if (offsetDays) d.setDate(d.getDate() + offsetDays);
-        return d.toISOString().slice(0, 19).replace('T', ' ');
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     };
 
     // Primer segmento (Simple o Parte 1 de Partido)
@@ -144,10 +153,10 @@ export class SchedulingService {
     }
 
     for (const m of markings) {
-        await pool.execute(
-            `INSERT INTO attendance_records (id, company_id, collaborator_id, schedule_id, timestamp, type, status, is_valid_zone) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [generateUUID(), companyId, collaboratorId, scheduleId, m.time, m.type, 'OnTime', 1]
+        await connection.execute(
+            `INSERT INTO attendance_records (id, company_id, collaborator_id, schedule_id, timestamp, type, lat, lng, marking_zone_id, is_valid_zone, status, biometric_method) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [generateUUID(), companyId, collaboratorId, scheduleId, m.time, m.type, null, null, null, 1, 'OnTime', 'AUTO']
         );
     }
   }
