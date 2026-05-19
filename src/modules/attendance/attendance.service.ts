@@ -124,6 +124,24 @@ export class AttendanceService {
         }
     }
 
+    // --- PASO 3: GEOVALLA (Salida temprana si falla) ---
+    if (!isValidZone) {
+        const id = generateUUID();
+        await this.repository.createRecord({
+            id,
+            company_id: companyId,
+            collaborator_id: collaborator.id,
+            schedule_id: scheduleId,
+            type: 'N/A',
+            lat,
+            lng,
+            marking_zone_id: markingZoneId,
+            is_valid_zone: false,
+            status: 'WrongGeofence'
+        });
+        return { id, type: 'N/A', status: 'WrongGeofence', collaboratorName: `${collaborator.first_name} ${collaborator.last_name}`, time: roundedMarkingTime.toISOString() };
+    }
+
     // 6. Calcular estado puntualidad
     if (status === 'Unknown' && scheduleId) {
         const targetSchedule = schedule || await this.repository.findTodaySchedule(companyId, collaborator.id);
