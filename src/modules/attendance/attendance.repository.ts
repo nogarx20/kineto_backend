@@ -63,7 +63,7 @@ export class AttendanceRepository {
       SELECT s.*, sh.start_time, sh.end_time, sh.entry_start_buffer, sh.entry_end_buffer, sh.name as shift_name
       FROM schedules s
       JOIN shifts sh ON s.shift_id = sh.id
-      WHERE s.company_id = ? AND s.collaborator_id = ? AND s.date = CURDATE()
+      WHERE s.company_id = ? AND s.collaborator_id = ? AND s.date = CURDATE() AND s.onDelete = 0
     `, [companyId, collaboratorId]);
     return rows[0];
   }
