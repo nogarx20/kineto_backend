@@ -18,11 +18,18 @@ export class SchedulingService {
 
   async assignShift(companyId: string, id: string | undefined, collaboratorId: string, shiftId: string, date: string, costCenterId?: string, markingZoneId?: string) {
     const connection = await pool.getConnection();
-    const existingOnDate = await this.repository.findByCollaboratorAndDate(companyId, collaboratorId, date);
-
     try {
       await connection.beginTransaction();
 
+      // 1. Obtener el ID real de la base de datos para esta fecha/colaborador
+      // Esto evita el error de Foreign Key si ya existe un registro (incluso si onDelete = 1)
+      const [existingRaw]: any = await connection.execute(
+        'SELECT id FROM schedules WHERE company_id = ? AND collaborator_id = ? AND date = ? LIMIT 1',
+        [companyId, collaboratorId, date]
+      );
+      const scheduleId = existingRaw.length > 0 ? existingRaw[0].id : (id || generateUUID());
+
+      const existingOnDate = await this.repository.findByCollaboratorAndDate(companyId, collaboratorId, date);
       if (existingOnDate && await this.repository.hasAttendance(existingOnDate.id, connection)) {
           if (existingOnDate.is_automatic_marking !== 1) {
               throw new Error("Acción Denegada: El turno actual ya posee registros de asistencia manuales o biométricos y no puede ser modificado.");
@@ -95,7 +102,6 @@ export class SchedulingService {
         }
     }
 
-    const scheduleId = id || (existingOnDate ? existingOnDate.id : generateUUID());
     await this.repository.createOrUpdate({
       id: scheduleId,
       company_id: companyId,
@@ -116,10 +122,10 @@ export class SchedulingService {
       await connection.commit();
     return { success: true };
     } catch (error) {
-      await connection.rollback();
+      if (connection) await connection.rollback();
       throw error;
     } finally {
-      connection.release();
+      if (connection) connection.release();
     }
   }
 
