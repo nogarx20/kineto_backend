@@ -232,7 +232,7 @@ export class ReportsService {
     // 5. Pie Data (Distribución)
     const colorMap: any = {
       'OnTime': '#10b981',
-      'Late': '#f59e0b',
+      'Late': '#f59e0b', // Amber
       'EarlyDeparture': '#f97316',
       'Overtime': '#3b82f6',
       'Unknown': '#94a3b8'
