@@ -90,12 +90,13 @@ export class SchedulingService {
           specificReason = `El último contrato (${lc.contract_code}) está marcado para eliminación.`;
       }
 
-      throw new Error(`Acción Denegada: No existe un contrato activo para la fecha ${date}.
-${specificReason ? `\nRazón: ${specificReason}\n` : ''}
-Último Contrato: ${lc.contract_code || 'S/N'} | Estado: ${lc.status}
-Cargo: ${lc.position_name || 'N/A'}
-Centro de Costo: ${lc.cost_center_name || 'N/A'}
-Vigencia: ${startF} al ${endF}`);
+      throw new Error(
+        `Acción Denegada: No existe un contrato activo para la fecha ${date}.
+        ${specificReason ? `\nRazón: ${specificReason}\n` : ''}
+        Último Contrato: ${lc.contract_code || 'S/N'} | Estado: ${lc.status}
+        Cargo: ${lc.position_name || 'N/A'}
+        Centro de Costo: ${lc.cost_center_name || 'N/A'}
+        Vigencia: ${startF} al ${endF}`);
     }
 
     const row = rows[0];
@@ -220,7 +221,7 @@ Vigencia: ${startF} al ${endF}`);
         await connection.execute(
             `INSERT INTO attendance_records (id, company_id, collaborator_id, schedule_id, timestamp, type, lat, lng, marking_zone_id, is_valid_zone, status, biometric_method, validation_method) 
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [generateUUID(), companyId, collaboratorId, scheduleId, m.time, m.type, zoneInfo?.lat || null, zoneInfo?.lng || null, zoneInfo?.zoneId || null, 1, 'OnTime', 'AUTOMATIC', 'MANUAL']
+            [generateUUID(), companyId, collaboratorId, scheduleId, m.time, m.type, zoneInfo?.lat || null, zoneInfo?.lng || null, zoneInfo?.zoneId || null, 1, 'OnTime', 'AUTOMATIC', 'AUTO']
         );
     }
   }
