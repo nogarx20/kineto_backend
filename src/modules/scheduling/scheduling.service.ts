@@ -116,11 +116,11 @@ export class SchedulingService {
     if (newShift && newShift.is_automatic_marking == 1) {
         let finalLat = null;
         let finalLng = null;
-        if (finalZoneId) {
-            const [z]: any = await connection.execute('SELECT latitude, longitude FROM marking_zones WHERE id = ?', [finalZoneId]);
+        if (finalZoneId) { // Si hay una zona de marcaje asignada
+            const [z]: any = await connection.execute('SELECT lat, lng FROM marking_zones WHERE id = ?', [finalZoneId]);
             if (z.length > 0) {
-                finalLat = z[0].latitude;
-                finalLng = z[0].longitude;
+                finalLat = z[0].lat;
+                finalLng = z[0].lng;
             }
         }
         await this.manageAutoMarkings(scheduleId, companyId, collaboratorId, date, newShift, connection, { zoneId: finalZoneId, lat: finalLat, lng: finalLng });
