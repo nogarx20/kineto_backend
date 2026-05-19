@@ -46,7 +46,29 @@ export class SchedulingService {
     `, [shiftId, collaboratorId, companyId, date, date]);
 
     if (rows.length === 0) {
-      throw new Error(`Acción Denegada: El colaborador no posee un contrato activo o vigente para la fecha ${date}.`);
+      // Si falla, buscamos la información del último contrato para dar feedback detallado
+      const [lastContractRows]: any = await connection.execute(`
+        SELECT c.contract_code, c.position_name, c.start_date, c.end_date, c.status, cc.name as cost_center_name
+        FROM contracts c
+        LEFT JOIN cost_centers cc ON c.cost_center_id = cc.id
+        WHERE c.collaborator_id = ? AND c.company_id = ? AND c.onDelete = 0
+        ORDER BY c.start_date DESC LIMIT 1
+      `, [collaboratorId, companyId]);
+
+      if (lastContractRows.length === 0) {
+        throw new Error(`Acción Denegada: El colaborador no posee ningún contrato registrado en el sistema.`);
+      }
+
+      const lc = lastContractRows[0];
+      const startF = new Date(lc.start_date).toLocaleDateString('es-ES');
+      const endF = lc.end_date ? new Date(lc.end_date).toLocaleDateString('es-ES') : 'Indefinido';
+
+      throw new Error(`Acción Denegada: No existe un contrato activo para la fecha ${date}.
+
+Último Contrato: ${lc.contract_code || 'S/N'} | Estado: ${lc.status}
+Cargo: ${lc.position_name || 'N/A'}
+Centro de Costo: ${lc.cost_center_name || 'N/A'}
+Vigencia: ${startF} al ${endF}`);
     }
 
     const row = rows[0];
