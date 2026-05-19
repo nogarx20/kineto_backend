@@ -66,12 +66,23 @@ export class SchedulingService {
 
       let specificReason = '';
       const shiftDateStr = date.split('T')[0]; // Formato YYYY-MM-DD
-      const contractStartDateStr = lc.start_date.split('T')[0]; // Formato YYYY-MM-DD
-      const contractEndDateStr = lc.end_date ? lc.end_date.split('T')[0] : null; // Formato YYYY-MM-DD o null
+      
+      // Helper para formatear Date objects a YYYY-MM-DD
+      const formatDbDate = (d: Date | string | null) => {
+          if (!d) return null;
+          const dateObj = new Date(d);
+          const y = dateObj.getFullYear();
+          const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+          const day = String(dateObj.getDate()).padStart(2, '0');
+          return `${y}-${m}-${day}`;
+      };
+
+      const contractStartDateStr = formatDbDate(lc.start_date);
+      const contractEndDateStr = formatDbDate(lc.end_date);
 
       if (lc.status !== 'Activo') {
           specificReason = `El último contrato (${lc.contract_code}) no está en estado 'Activo' (estado actual: ${lc.status}).`;
-      } else if (shiftDateStr < contractStartDateStr) {
+      } else if (contractStartDateStr && shiftDateStr < contractStartDateStr) {
           specificReason = `El turno (${shiftDateStr}) es anterior a la fecha de inicio del último contrato (${contractStartDateStr}).`;
       } else if (contractEndDateStr && shiftDateStr > contractEndDateStr) {
           specificReason = `El turno (${shiftDateStr}) es posterior a la fecha de fin del último contrato (${contractEndDateStr}).`;
