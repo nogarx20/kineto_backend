@@ -46,9 +46,10 @@ export class SchedulingService {
     `, [shiftId, collaboratorId, companyId, date, date]);
 
     if (rows.length === 0) {
-      // Si falla, buscamos la información del último contrato para dar feedback detallado
+      // Si no se encuentra un contrato activo para la fecha, buscamos el último contrato
+      // para proporcionar feedback detallado en el mensaje de error.
       const [lastContractRows]: any = await connection.execute(`
-        SELECT c.contract_code, c.position_name, c.start_date, c.end_date, c.status, cc.name as cost_center_name
+        SELECT c.contract_code, c.position_name, c.start_date, c.end_date, c.status, c.onDelete, cc.name as cost_center_name
         FROM contracts c
         LEFT JOIN cost_centers cc ON c.cost_center_id = cc.id
         WHERE c.collaborator_id = ? AND c.company_id = ? AND c.onDelete = 0
@@ -56,15 +57,30 @@ export class SchedulingService {
       `, [collaboratorId, companyId]);
 
       if (lastContractRows.length === 0) {
-        throw new Error(`Acción Denegada: El colaborador no posee ningún contrato registrado en el sistema.`);
+        throw new Error(`Acción Denegada: El colaborador no posee ningún contrato registrado en el sistema para la fecha ${date}.`);
       }
 
       const lc = lastContractRows[0];
       const startF = new Date(lc.start_date).toLocaleDateString('es-ES');
       const endF = lc.end_date ? new Date(lc.end_date).toLocaleDateString('es-ES') : 'Indefinido';
 
-      throw new Error(`Acción Denegada: No existe un contrato activo para la fecha ${date}.
+      let specificReason = '';
+      const shiftDateStr = date.split('T')[0]; // Formato YYYY-MM-DD
+      const contractStartDateStr = lc.start_date.split('T')[0]; // Formato YYYY-MM-DD
+      const contractEndDateStr = lc.end_date ? lc.end_date.split('T')[0] : null; // Formato YYYY-MM-DD o null
 
+      if (lc.status !== 'Activo') {
+          specificReason = `El último contrato (${lc.contract_code}) no está en estado 'Activo' (estado actual: ${lc.status}).`;
+      } else if (shiftDateStr < contractStartDateStr) {
+          specificReason = `El turno (${shiftDateStr}) es anterior a la fecha de inicio del último contrato (${contractStartDateStr}).`;
+      } else if (contractEndDateStr && shiftDateStr > contractEndDateStr) {
+          specificReason = `El turno (${shiftDateStr}) es posterior a la fecha de fin del último contrato (${contractEndDateStr}).`;
+      } else if (lc.onDelete === 1) {
+          specificReason = `El último contrato (${lc.contract_code}) está marcado para eliminación.`;
+      }
+
+      throw new Error(`Acción Denegada: No existe un contrato activo para la fecha ${date}.
+${specificReason ? `\nRazón: ${specificReason}\n` : ''}
 Último Contrato: ${lc.contract_code || 'S/N'} | Estado: ${lc.status}
 Cargo: ${lc.position_name || 'N/A'}
 Centro de Costo: ${lc.cost_center_name || 'N/A'}
