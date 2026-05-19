@@ -113,11 +113,13 @@ export class ReportsService {
         identification: l.identification,
         photo: l.photo,
         costCenter: l.cost_center || 'N/A',
-        time: new Date(l.timestamp).toLocaleString('es-CO', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+        time: l.timestamp,
         type: l.type,
         valid: l.is_valid_zone === 1,
         zoneName: l.zone_name || 'Ubicación Desconocida',
-        shiftName: l.shift_name
+        shiftName: l.shift_name,
+        biometricMethod: l.biometric_method,
+        status: l.status
       };
     });
 
