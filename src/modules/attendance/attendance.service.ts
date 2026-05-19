@@ -36,7 +36,13 @@ export class AttendanceService {
     if (!activeContract) {
         throw new Error('Acceso Denegado: No se detectó un contrato laboral activo para este colaborador.');
     }
-    const schedulingParams = await this.repository.getSchedulingParameters(companyId);
+    
+    const [schedulingParams, companySettings] = await Promise.all([
+        this.repository.getSchedulingParameters(companyId),
+        this.repository.getCompanySettings(companyId)
+    ]);
+
+    const tolerance = parseInt(companySettings.travelTolerance) || 0;
 
     let type = data.type;
     let scheduleId = data.scheduleId;
@@ -119,8 +125,8 @@ export class AttendanceService {
             }
 
             if (type === 'IN') {
-                const entryWindowStart = new Date(shiftStartTime.getTime() - (targetSchedule.entry_start_buffer * 60 * 1000));
-                const entryWindowEnd = new Date(shiftStartTime.getTime() + (targetSchedule.entry_end_buffer * 60 * 1000));
+                const entryWindowStart = new Date(shiftStartTime.getTime() - (tolerance * 60 * 1000));
+                const entryWindowEnd = new Date(shiftStartTime.getTime() + (tolerance * 60 * 1000));
 
                 if (roundedMarkingTime < entryWindowStart) {
                     status = 'EarlyEntry';
@@ -130,8 +136,8 @@ export class AttendanceService {
                     status = 'OnTime';
                 }
             } else if (type === 'OUT') {
-                const exitWindowStart = new Date(shiftEndTime.getTime() - (targetSchedule.exit_start_buffer * 60 * 1000));
-                const exitWindowEnd = new Date(shiftEndTime.getTime() + (targetSchedule.exit_end_buffer * 60 * 1000));
+                const exitWindowStart = new Date(shiftEndTime.getTime() - (tolerance * 60 * 1000));
+                const exitWindowEnd = new Date(shiftEndTime.getTime() + (tolerance * 60 * 1000));
 
                 if (roundedMarkingTime < exitWindowStart) {
                     status = 'EarlyDeparture';
