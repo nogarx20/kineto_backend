@@ -60,7 +60,7 @@ export class AttendanceRepository {
 
   async findTodaySchedule(companyId: string, collaboratorId: string) {
     const [rows]: any = await pool.execute(`
-      SELECT s.*, sh.start_time, sh.end_time, sh.entry_start_buffer, sh.entry_end_buffer, sh.name as shift_name
+      SELECT s.*, sh.start_time, sh.end_time, sh.entry_start_buffer, sh.entry_end_buffer, sh.exit_start_buffer, sh.exit_end_buffer, sh.name as shift_name
       FROM schedules s
       JOIN shifts sh ON s.shift_id = sh.id
       WHERE s.company_id = ? AND s.collaborator_id = ? AND s.date = CURDATE() AND s.onDelete = 0
@@ -114,6 +114,17 @@ export class AttendanceRepository {
       FROM scheduling_parameters
       WHERE company_id = ?
     `, [companyId]);
-    return rows[0] || { rounding_minutes: 0 }; // Valor por defecto si no hay configuración
+    return rows[0] || { rounding_minutes: 0 };
+  }
+
+  async getCompanySettings(companyId: string) {
+    const [rows]: any = await pool.execute(
+      'SELECT settings FROM companies WHERE id = ?',
+      [companyId]
+    );
+    if (rows.length && rows[0].settings) {
+      return typeof rows[0].settings === 'string' ? JSON.parse(rows[0].settings) : rows[0].settings;
+    }
+    return {};
   }
 }
