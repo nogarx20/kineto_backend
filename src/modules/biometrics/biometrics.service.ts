@@ -180,7 +180,7 @@ export class BiometricService {
     }
 
     const markingResult = await this.attendanceService.registerMarking(companyId, bestMatch.identification, coords?.lat, coords?.lng);
-    await pool.execute('UPDATE attendance_records SET biometric_validation_id = ?, biometric_score = ? WHERE id = ?', [bestMatch.id, minDistance, markingResult.id]);
+    await pool.execute('UPDATE attendance_records SET biometric_validation_id = ?, biometric_score = ?, biometric_method = ? WHERE id = ?', [bestMatch.id, minDistance, 'FACE', markingResult.id]);
 
     return { 
         ...markingResult, 
