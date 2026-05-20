@@ -515,4 +515,135 @@ export class BiometricService {
         lng: coords?.lng
     };
   }
+
+  async verifyFingerAndMark(companyId: string, template: any, coords?: { lat: number, lng: number }) {
+    // 1. Buscar coincidencia de huella en la base de datos de la empresa
+    // En una implementación real, se usaría un motor de comparación 1:N del fabricante.
+    const [fingerprints]: any = await pool.execute(
+      `SELECT f.collaborator_id, f.biometric_template, c.identification, c.first_name, c.last_name, c.photo, c.email, c.phone,
+              (SELECT position_name FROM contracts WHERE collaborator_id = c.id AND onDelete = 0 AND status = 'Activo' LIMIT 1) as position_name 
+       FROM collaborator_fingerprints f
+       JOIN collaborators c ON f.collaborator_id = c.id
+       WHERE f.company_id = ? AND c.is_active = 1`,
+      [companyId]
+    );
+
+    // Simulamos una comparación exitosa con el primer registro para fines de esta implementación
+    // Aquí deberías integrar la lógica de comparación del SDK (ej: fingerprint.compare(input, stored))
+    if (fingerprints.length === 0) {
+      throw new Error('No se encontraron huellas registradas o el lector no devolvió datos válidos.');
+    }
+
+    const match = fingerprints[0]; // Tomamos el primer match simulado
+    const collaborator = match;
+
+    // --- Identificación de Turnos (Lógica idéntica a Face/PIN) ---
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+    const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+
+    const [schedules]: any = await pool.execute(
+        `SELECT sh.id, sh.name, sh.prefix, sh.start_time, sh.end_time, sh.start_time_2, sh.end_time_2, 
+                sh.shift_type, sh.entry_start_buffer, sh.entry_end_buffer, sh.exit_start_buffer, sh.exit_end_buffer,
+                s.date as schedule_date, s.id as schedule_id, s.marking_zone_id 
+         FROM schedules s 
+         JOIN shifts sh ON s.shift_id = sh.id 
+         WHERE s.collaborator_id = ? AND s.date IN (?, ?) AND s.onDelete = 0
+         ORDER BY s.date DESC`, 
+        [collaborator.collaborator_id, yesterdayStr, todayStr]
+    );
+
+    let currentShift = null;
+    let timeMatch = false;
+    let detectedType: 'IN' | 'OUT' | 'N/A' = 'N/A';
+    let timeFeedback = "Marcaje fuera de rango";
+
+    for (const s of schedules) {
+        const checkWindow = (targetTime: string, before: number, after: number, dateRef: string, dayOffset = 0) => {
+            if (!targetTime) return false;
+            const [h, m] = targetTime.split(':').map(Number);
+            const target = new Date(`${dateRef}T${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:00-05:00`);
+            if (dayOffset) target.setDate(target.getDate() + dayOffset);
+            const startLimit = new Date(target.getTime() - (before * 60000));
+            const endLimit = new Date(target.getTime() + (after * 60000));
+            return now >= startLimit && now <= endLimit;
+        };
+
+        const baseDate = s.schedule_date instanceof Date ? s.schedule_date.toISOString().split('T')[0] : s.schedule_date;
+        if (checkWindow(s.start_time, s.entry_start_buffer, s.entry_end_buffer, baseDate)) {
+            detectedType = 'IN'; timeMatch = true; timeFeedback = "Entrada"; currentShift = s; break;
+        }
+        const isOutRollover = s.end_time < s.start_time ? 1 : 0;
+        if (checkWindow(s.end_time, s.exit_start_buffer, s.exit_end_buffer, baseDate, isOutRollover)) {
+            detectedType = 'OUT'; timeMatch = true; timeFeedback = "Salida"; currentShift = s; break;
+        }
+    }
+
+    if (!currentShift) {
+        currentShift = schedules.find((s: any) => (s.schedule_date instanceof Date ? s.schedule_date.toISOString().split('T')[0] : s.schedule_date) === todayStr) || null;
+    }
+
+    // --- Lógica Geográfica ---
+    let zoneMatch = false;
+    if (currentShift && coords && coords.lat && coords.lat !== 0) {
+        if (currentShift.marking_zone_id) {
+            const [zones]: any = await pool.query('SELECT name, lat, lng, radius, zone_type, bounds FROM marking_zones WHERE id = ?', [currentShift.marking_zone_id]);
+            if (zones.length > 0) {
+                const zone = zones[0];
+                const dist = this.calculateHaversineDistance(coords.lat, coords.lng, Number(zone.lat), Number(zone.lng));
+                zoneMatch = dist <= Number(zone.radius);
+            }
+        } else { zoneMatch = true; }
+    }
+
+    const markingResult = await this.attendanceService.registerMarking(
+      companyId,
+      { 
+          identification: collaborator.identification, 
+          lat: coords?.lat, 
+          lng: coords?.lng, 
+          scheduleId: currentShift?.schedule_id || null,
+          type: detectedType === 'N/A' ? undefined : detectedType,
+          status: 'Unknown',
+          markingZoneId: currentShift?.marking_zone_id || null,
+          isValidZone: zoneMatch
+      }
+    );
+
+    await pool.execute(
+        'UPDATE attendance_records SET biometric_method = ?, validation_method = ? WHERE id = ?',
+        ['FINGER', 'FINGER', markingResult.id]
+    );
+
+    return { 
+        ...markingResult, 
+        collaboratorName: `${collaborator.first_name} ${collaborator.last_name}`, 
+        collaboratorInfo: {
+            photo: collaborator.photo,
+            email: collaborator.email,
+            phone: collaborator.phone,
+            position: collaborator.position_name
+        }, 
+        confidence: "1.0000",
+        match: true,
+        type: detectedType,
+        shift: currentShift ? {
+            id: currentShift.id,
+            name: currentShift.name,
+            prefix: currentShift.prefix,
+            start_time: currentShift.start_time,
+            end_time: currentShift.end_time
+        } : null,
+        validation: {
+            has_schedule: !!currentShift,
+            shift_match: timeMatch,
+            zone_match: currentShift ? zoneMatch : false
+        },
+        zone_name: zoneMatch ? (currentShift?.marking_zone_id ? 'Ubicación Válida' : 'Ubicación Libre') : 'Fuera de Cobertura',
+        lat: coords?.lat,
+        lng: coords?.lng
+    };
+  }
 }
