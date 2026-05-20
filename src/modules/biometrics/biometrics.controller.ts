@@ -65,8 +65,8 @@ export class BiometricController {
   verifyFingerAndMark = async (req: Request, res: Response) => {
     try {
       const user = (req as any).user;
-      const { template, lat, lng } = (req as any).body;
-      const result = await service.verifyFingerAndMark(user.company_id, template, { lat, lng });
+      const { assertion, template, lat, lng } = (req as any).body;
+      const result = await service.verifyFingerAndMark(user.company_id, assertion || template, { lat, lng });
       await logAudit(req, 'FINGER_MARK_SUCCESS', 'attendance', result.id, { finger_used: true });
       (res as any).json(result);
     } catch (err: any) {
