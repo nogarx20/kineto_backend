@@ -517,24 +517,41 @@ export class BiometricService {
   }
 
   async verifyFingerAndMark(companyId: string, template: any, coords?: { lat: number, lng: number }) {
-    // 1. Buscar coincidencia de huella en la base de datos de la empresa
-    // En una implementación real, se usaría un motor de comparación 1:N del fabricante.
-    const [fingerprints]: any = await pool.execute(
-      `SELECT f.collaborator_id, f.biometric_template, c.identification, c.first_name, c.last_name, c.photo, c.email, c.phone,
-              (SELECT position_name FROM contracts WHERE collaborator_id = c.id AND onDelete = 0 AND status = 'Activo' LIMIT 1) as position_name 
-       FROM collaborator_fingerprints f
-       JOIN collaborators c ON f.collaborator_id = c.id
-       WHERE f.company_id = ? AND c.is_active = 1`,
-      [companyId]
-    );
-
-    // Simulamos una comparación exitosa con el primer registro para fines de esta implementación
-    // Aquí deberías integrar la lógica de comparación del SDK (ej: fingerprint.compare(input, stored))
-    if (fingerprints.length === 0) {
-      throw new Error('No se encontraron huellas registradas o el lector no devolvió datos válidos.');
+    // 1. Identificar al colaborador mediante la respuesta de WebAuthn
+    let collaboratorId = null;
+    
+    // El userHandle contiene el ID del colaborador que se envió durante el registro (enrollment)
+    if (template?.response?.userHandle) {
+        const buffer = Buffer.from(template.response.userHandle, 'base64');
+        collaboratorId = buffer.toString('utf8');
+    } else {
+        // Fallback: Buscar el ID de la credencial en el mapeo de huellas
+        const credentialId = template?.id;
+        const [rows]: any = await pool.execute(
+            'SELECT collaborator_id FROM collaborator_fingerprints WHERE biometric_template = ? AND company_id = ?',
+            [credentialId, companyId]
+        );
+        if (rows.length > 0) collaboratorId = rows[0].collaborator_id;
     }
 
-    const match = fingerprints[0]; // Tomamos el primer match simulado
+    if (!collaboratorId) {
+        throw new Error('No se pudo identificar al colaborador con la firma biométrica proporcionada.');
+    }
+
+    const [collaborators]: any = await pool.execute(
+      `SELECT c.id as collaborator_id, c.identification, c.first_name, c.last_name, c.photo, c.email, c.phone, f.finger_name,
+              (SELECT position_name FROM contracts WHERE collaborator_id = c.id AND onDelete = 0 AND status = 'Activo' LIMIT 1) as position_name 
+       FROM collaborators c
+       LEFT JOIN collaborator_fingerprints f ON f.collaborator_id = c.id
+       WHERE c.id = ? AND c.company_id = ? AND c.is_active = 1`,
+      [collaboratorId, companyId]
+    );
+
+    if (collaborators.length === 0) {
+      throw new Error('Identidad verificada pero el perfil del colaborador no existe o está inhabilitado.');
+    }
+
+    const match = collaborators[0];
     const collaborator = match;
 
     // --- Identificación de Turnos (Lógica idéntica a Face/PIN) ---
