@@ -30,10 +30,15 @@ export class SchedulingService {
       const scheduleId = existingRaw.length > 0 ? existingRaw[0].id : (id || generateUUID());
 
       const existingOnDate = await this.repository.findByCollaboratorAndDate(companyId, collaboratorId, date);
-      if (existingOnDate && await this.repository.hasAttendance(existingOnDate.id, connection)) {
-          if (existingOnDate.is_automatic_marking !== 1) {
-              throw new Error("Acción Denegada: El turno actual ya posee registros de asistencia manuales o biométricos y no puede ser modificado.");
-          }
+      if (existingOnDate) {
+        const [validMarkings]: any = await connection.execute(
+          "SELECT id FROM attendance_records WHERE schedule_id = ? AND status NOT IN ('NoRecognition', 'NoTurn', 'WrongGeofence', 'Unknown') LIMIT 1",
+          [existingOnDate.id]
+        );
+
+        if (validMarkings.length > 0 && existingOnDate.is_automatic_marking !== 1) {
+          throw new Error("Acción Denegada: El turno actual ya posee registros de asistencia válidos (dentro de geocerca) y no puede ser modificado.");
+        }
       }
 
     // Validar contrato activo y obtener tipo de turno para reglas de negocio (usando DATE() para evitar fallos por componentes de tiempo)
@@ -245,16 +250,24 @@ export class SchedulingService {
     const sched = await this.repository.findById(companyId, id);
     if (!sched) return { success: true };
 
-    // Validar si tiene asistencia antes de borrar
-    const hasAttendance = await this.repository.hasAttendance(id);
-    if (hasAttendance) {
+    // Validar si tiene asistencia válida (is_valid_zone = 1) antes de borrar
+    const [validMarkings]: any = await pool.execute(
+      "SELECT id FROM attendance_records WHERE schedule_id = ? AND status NOT IN ('NoRecognition', 'NoTurn', 'WrongGeofence', 'Unknown') LIMIT 1",
+      [id]
+    );
+
+    if (validMarkings.length > 0) {
         if (sched.is_automatic_marking == 1) {
             // Si es automático, permitimos borrar los marcajes generados
             await pool.execute('DELETE FROM attendance_records WHERE schedule_id = ?', [id]);
         } else {
-            throw new Error("Acción Denegada: No es posible eliminar una asignación que ya cuenta con registros de asistencia vinculados.");
+            throw new Error("Acción Denegada: No es posible eliminar una asignación que ya cuenta con registros de asistencia válidos vinculados.");
         }
     }
+
+    // Limpiar marcajes que no son válidos (fuera de geovalla) para evitar registros huérfanos antes de borrar el turno
+    await pool.execute('DELETE FROM attendance_records WHERE schedule_id = ?', [id]);
+
     await this.repository.delete(companyId, id);
     return { success: true };
   }
