@@ -62,6 +62,19 @@ export class BiometricController {
     }
   };
 
+  verifyFingerAndMark = async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const { template, lat, lng } = (req as any).body;
+      const result = await service.verifyFingerAndMark(user.company_id, template, { lat, lng });
+      await logAudit(req, 'FINGER_MARK_SUCCESS', 'attendance', result.id, { finger_used: true });
+      (res as any).json(result);
+    } catch (err: any) {
+      await logAudit(req, 'FINGER_MARK_FAILED', 'attendance', undefined, { error: err.message });
+      (res as any).status(401).json({ error: err.message, code: 'FINGER_FAILED' });
+    }
+  };
+
   delete = async (req: Request, res: Response) => {
     try {
       const user = (req as any).user;
