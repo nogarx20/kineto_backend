@@ -11,6 +11,7 @@ router.use(authMiddleware, tenantMiddleware);
 
 router.post('/enroll', rbacMiddleware('collaborators.personal.update'), controller.enroll);
 router.post('/verify-pin-and-mark', rbacMiddleware('attendance.create'), controller.verifyPinAndMark);
+router.post('/verify-finger-and-mark', rbacMiddleware('attendance.create'), controller.verifyFingerAndMark);
 router.post('/verify-and-mark', rbacMiddleware('attendance.create'), controller.verifyAndMark);
 router.post('/identify-and-mark', rbacMiddleware('attendance.create'), controller.identifyAndMark);
 router.delete('/:collaboratorId', rbacMiddleware('collaborators.personal.update'), controller.delete);
