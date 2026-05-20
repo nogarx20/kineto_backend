@@ -113,13 +113,13 @@ export class ReportsService {
         identification: l.identification,
         photo: l.photo,
         costCenter: l.cost_center || 'N/A',
-        time: l.timestamp,
+        time: l.timestamp, // Mantener el timestamp original sin formatear
         type: l.type,
         valid: l.is_valid_zone === 1,
         zoneName: l.zone_name || 'Ubicación Desconocida',
         shiftName: l.shift_name,
-        biometricMethod: l.biometric_method,
-        status: l.status
+        biometricMethod: l.biometric_method, // Asegurar que se envía
+        status: l.status // Asegurar que se envía
       };
     });
 
@@ -234,10 +234,15 @@ export class ReportsService {
     // 5. Pie Data (Distribución)
     const colorMap: any = {
       'OnTime': '#10b981',
-      'Late': '#f59e0b', // Amber
+      'LateEntry': '#f59e0b',
+      'LateDeparture': '#f59e0b',
       'EarlyDeparture': '#f97316',
+      'EarlyEntry': '#f97316',
       'Overtime': '#3b82f6',
-      'Unknown': '#94a3b8'
+      'Unknown': '#94a3b8',
+      'WrongGeofence': '#ef4444',
+      'NoTurn': '#64748b',
+      'NoRecognition': '#ef4444'
     };
     const pieData = distribution.map((d: any) => ({
       name: d.status,
