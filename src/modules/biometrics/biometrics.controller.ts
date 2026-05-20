@@ -1,0 +1,125 @@
+import { Request, Response } from 'express';
+import { BiometricService } from './biometrics.service';
+import { logAudit } from '../../middlewares/audit.middleware';
+
+const service = new BiometricService();
+
+export class BiometricController {
+  enroll = async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const { collaboratorId, descriptor } = (req as any).body;
+      const result = await service.enroll(user.company_id, collaboratorId, descriptor);
+      await logAudit(req, 'FACEID_ENROLL_SUCCESS', 'collaborators', collaboratorId);
+      (res as any).json(result);
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
+  };
+
+  identifyAndMark = async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const { descriptor, lat, lng } = (req as any).body;
+      const result = await service.identifyAndMark(user.company_id, descriptor, { lat, lng });
+      await logAudit(req, 'FACEID_IDENTIFY_SUCCESS', 'attendance', result.id, { confidence: result.confidence });
+      (res as any).json(result);
+    } catch (err: any) {
+      await logAudit(req, 'FACEID_IDENTIFY_FAILED', 'attendance', undefined, { error: err.message });
+      
+      // Diferenciar entre error de coincidencia y otros errores operativos
+      const isMatchError = err.message.includes('Identidad no reconocida');
+      const status = isMatchError ? 401 : 400;
+      
+      (res as any).status(status).json({ error: err.message, code: isMatchError ? 'MATCH_FAILED' : 'BIOMETRIC_ERROR' });
+    }
+  };
+
+  verifyAndMark = async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const { identification, descriptor, lat, lng } = (req as any).body;
+      const result = await service.verifyAndMark(user.company_id, identification, descriptor, { lat, lng });
+      await logAudit(req, 'FACEID_MARK_SUCCESS', 'attendance', result.id, { identification, confidence: (result as any).confidence });
+      (res as any).json(result);
+    } catch (err: any) {
+      (res as any).status(401).json({ error: err.message });
+    }
+  };
+
+  verifyPinAndMark = async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const { pin, lat, lng } = (req as any).body;
+      const result = await service.verifyPinAndMark(user.company_id, pin, { lat, lng });
+      await logAudit(req, 'PIN_MARK_SUCCESS', 'attendance', result.id, { pin_used: true });
+      (res as any).json(result);
+    } catch (err: any) {
+      await logAudit(req, 'PIN_MARK_FAILED', 'attendance', undefined, { error: err.message });
+      const isMatchError = err.message.includes('PIN no reconocido');
+      const status = isMatchError ? 401 : 400;
+      (res as any).status(status).json({ error: err.message, code: isMatchError ? 'PIN_FAILED' : 'MARKING_ERROR' });
+    }
+  };
+
+  verifyFingerAndMark = async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const { template, lat, lng } = (req as any).body;
+      const result = await service.verifyFingerAndMark(user.company_id, template, { lat, lng });
+      await logAudit(req, 'FINGER_MARK_SUCCESS', 'attendance', result.id, { finger_used: true });
+      (res as any).json(result);
+    } catch (err: any) {
+      await logAudit(req, 'FINGER_MARK_FAILED', 'attendance', undefined, { error: err.message });
+      (res as any).status(401).json({ error: err.message, code: 'FINGER_FAILED' });
+    }
+  };
+
+  delete = async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const { collaboratorId } = (req as any).params;
+      const result = await service.delete(user.company_id, collaboratorId);
+      await logAudit(req, 'FACEID_DELETE_SUCCESS', 'collaborators', collaboratorId);
+      (res as any).json(result);
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
+  };
+
+  // --- HUELLAS DACTILARES ---
+  enrollFinger = async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const { collaboratorId, fingerName, template, deviceInfo } = (req as any).body;
+      const result = await service.enrollFinger(user.company_id, collaboratorId, fingerName, template, deviceInfo);
+      await logAudit(req, 'FINGERPRINT_ENROLL_SUCCESS', 'collaborators', collaboratorId, { finger: fingerName });
+      (res as any).json(result);
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
+  };
+
+  getFingers = async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const { collaboratorId } = (req as any).params;
+      const result = await service.getFingers(user.company_id, collaboratorId);
+      (res as any).json(result);
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
+  };
+
+  deleteFinger = async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const { id } = (req as any).params;
+      const result = await service.deleteFinger(user.company_id, id);
+      await logAudit(req, 'FINGERPRINT_DELETE_SUCCESS', 'biometrics', id);
+      (res as any).json(result);
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
+  };
+}
