@@ -208,7 +208,7 @@ export class BiometricService {
             isValidZone: zoneMatch
         }
     );
-    await pool.execute('UPDATE attendance_records SET biometric_validation_id = ?, biometric_score = ?, biometric_method = ? WHERE id = ?', [bestMatch.id, minDistance, 'FACE', markingResult.id]);
+    await pool.execute('UPDATE attendance_records SET biometric_validation_id = ?, biometric_score = ?, biometric_method = ?, validation_method = ? WHERE id = ?', [bestMatch.id, minDistance, 'FACE', 'FACE', markingResult.id]);
 
     return { 
         ...markingResult, 
@@ -296,8 +296,8 @@ export class BiometricService {
     );
 
     await pool.execute(
-        'UPDATE attendance_records SET biometric_validation_id = ?, biometric_score = ?, biometric_method = ? WHERE id = ?',
-        [storedBio.id, distance, 'FACE', markingResult.id]
+        'UPDATE attendance_records SET biometric_validation_id = ?, biometric_score = ?, biometric_method = ?, validation_method = ? WHERE id = ?',
+        [storedBio.id, distance, 'FACE', 'FACE', markingResult.id]
     );
 
     return { ...markingResult, confidence: (1 - distance).toFixed(4), match: true };
@@ -344,7 +344,9 @@ export class BiometricService {
   async verifyPinAndMark(companyId: string, pin: string, coords?: { lat: number, lng: number }) {
     // 1. Buscar colaborador por PIN
     const [collaborators]: any = await pool.execute(
-      'SELECT id, identification, first_name, last_name, photo, email, phone FROM collaborators WHERE pin = ? AND company_id = ? AND is_active = 1',
+      `SELECT c.id, c.identification, c.first_name, c.last_name, c.photo, c.email, c.phone, 
+              (SELECT position_name FROM contracts WHERE collaborator_id = c.id AND onDelete = 0 AND status = 'Activo' LIMIT 1) as position_name 
+       FROM collaborators c WHERE c.pin = ? AND c.company_id = ? AND c.is_active = 1`,
       [pin, companyId]
     );
 
@@ -355,11 +357,9 @@ export class BiometricService {
       // Esto no debería pasar si el PIN es único, pero es una buena práctica
       throw new Error('Múltiples colaboradores encontrados con el mismo PIN. Contacte a soporte.');
     }
-
     const collaborator = collaborators[0];
 
-    // 2. Proceder con la lógica de marcaje (similar a identifyAndMark o verifyAndMark)
-    // Aquí se reutiliza gran parte de la lógica de identifyAndMark para la validación de turno y geocerca
+    // --- Identificación de Turnos (Identidad de lógica con Face ID) ---
     const now = new Date();
     const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
@@ -379,15 +379,140 @@ export class BiometricService {
         [collaborator.id, yesterdayStr, todayStr]
     );
 
-    // ... (Resto de la lógica de validación de turno y geocerca, idéntica a identifyAndMark)
-    // Por brevedad, se omite aquí, pero sería copiar y adaptar la sección relevante.
-    // Al final, se llamaría a attendanceService.registerMarking
+    let currentShift = null;
+    let timeMatch = false;
+    let detectedType: 'IN' | 'OUT' | 'N/A' = 'N/A';
+    let timeFeedback = "Marcaje fuera de rango";
+
+    for (const s of schedules) {
+        if (s.shift_type === 'Descanso') continue;
+
+        const checkWindow = (targetTime: string, before: number, after: number, dateRef: string, dayOffset = 0) => {
+            if (!targetTime) return false;
+            const [h, m] = targetTime.split(':').map(Number);
+            const target = new Date(`${dateRef}T${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:00-05:00`);
+            if (dayOffset) target.setDate(target.getDate() + dayOffset);
+            const startLimit = new Date(target.getTime() - (before * 60000));
+            const endLimit = new Date(target.getTime() + (after * 60000));
+            return now >= startLimit && now <= endLimit;
+        };
+
+        const baseDate = s.schedule_date instanceof Date 
+            ? `${s.schedule_date.getFullYear()}-${(s.schedule_date.getMonth() + 1).toString().padStart(2, '0')}-${s.schedule_date.getDate().toString().padStart(2, '0')}` 
+            : s.schedule_date;
+
+        if (checkWindow(s.start_time, s.entry_start_buffer, s.entry_end_buffer, baseDate)) {
+            detectedType = 'IN'; timeMatch = true; timeFeedback = "Entrada"; currentShift = s; break;
+        }
+        const isOutRollover = s.end_time < s.start_time ? 1 : 0;
+        if (checkWindow(s.end_time, s.exit_start_buffer, s.exit_end_buffer, baseDate, isOutRollover)) {
+            detectedType = 'OUT'; timeMatch = true; timeFeedback = isOutRollover ? "Salida (Turno Ayer)" : "Salida"; currentShift = s; break;
+        }
+        if (s.shift_type === 'Partido') {
+            const isEntry2Rollover = s.start_time_2 < s.start_time ? 1 : 0;
+            if (checkWindow(s.start_time_2, s.entry_start_buffer_2, s.entry_end_buffer_2, baseDate, isEntry2Rollover)) {
+                detectedType = 'IN'; timeMatch = true; timeFeedback = "Entrada P2"; currentShift = s; break;
+            }
+            const isOut2Rollover = s.end_time_2 < s.start_time ? 1 : 0;
+            if (checkWindow(s.end_time_2, s.exit_start_buffer_2, s.exit_end_buffer_2, baseDate, isOut2Rollover)) {
+                detectedType = 'OUT'; timeMatch = true; timeFeedback = "Salida Final"; currentShift = s; break;
+            }
+        }
+    }
+
+    if (!currentShift) {
+        currentShift = schedules.find((s: any) => {
+            const d = s.schedule_date instanceof Date 
+                ? `${s.schedule_date.getFullYear()}-${(s.schedule_date.getMonth() + 1).toString().padStart(2, '0')}-${s.schedule_date.getDate().toString().padStart(2, '0')}` 
+                : s.schedule_date;
+            return d === todayStr;
+        }) || null;
+    }
+
+    // --- Lógica Geográfica Relacional ---
+    let zoneMatch = false;
+    const geofenceResults: any[] = [];
+    let matchedZoneName = null;
+    let assignedZoneName = 'Sin geocerca';
+
+    if (currentShift && coords && coords.lat && coords.lat !== 0) {
+        if (currentShift.marking_zone_id) {
+            const [zones]: any = await pool.query('SELECT name, lat, lng, radius, zone_type, bounds FROM marking_zones WHERE id = ? AND onDelete = 0 AND is_active = 1', [currentShift.marking_zone_id]);
+            if (zones.length > 0) {
+                const zone = zones[0];
+                if (zone.zone_type === 'circle' || !zone.zone_type) {
+                    const dist = this.calculateHaversineDistance(coords.lat, coords.lng, Number(zone.lat), Number(zone.lng));
+                    zoneMatch = dist <= Number(zone.radius);
+                } else if (zone.zone_type === 'rectangle' || zone.zone_type === 'square') {
+                    const bounds = typeof zone.bounds === 'string' ? JSON.parse(zone.bounds) : zone.bounds;
+                    zoneMatch = (coords.lat >= bounds.south && coords.lat <= bounds.north && coords.lng >= bounds.west && coords.lng <= bounds.east);
+                }
+                if (zoneMatch) { matchedZoneName = zone.name; }
+                assignedZoneName = zone.name;
+                geofenceResults.push({ name: zone.name, isInside: zoneMatch, distance: zone.zone_type === 'circle' ? Math.round(this.calculateHaversineDistance(coords.lat, coords.lng, Number(zone.lat), Number(zone.lng))) : null, radius: zone.radius });
+            }
+        } else {
+            zoneMatch = true; 
+            matchedZoneName = 'Sin restricción geográfica'; 
+            assignedZoneName = 'Ubicación Libre';
+        }
+    }
 
     const markingResult = await this.attendanceService.registerMarking(
       companyId,
-      { identification: collaborator.identification, lat: coords?.lat, lng: coords?.lng, status: 'Unknown', type: 'N/A' }
+      { 
+          identification: collaborator.identification, 
+          lat: coords?.lat, 
+          lng: coords?.lng, 
+          scheduleId: currentShift?.schedule_id || null,
+          type: detectedType === 'N/A' ? undefined : detectedType,
+          status: 'Unknown',
+          markingZoneId: currentShift?.marking_zone_id || null,
+          isValidZone: zoneMatch
+      }
     );
 
-    return { ...markingResult, collaboratorName: `${collaborator.first_name} ${collaborator.last_name}`, collaboratorInfo: collaborator, match: true };
+    // Actualizar con método PIN
+    await pool.execute(
+        'UPDATE attendance_records SET biometric_method = ?, validation_method = ? WHERE id = ?',
+        ['PIN', 'PIN', markingResult.id]
+    );
+
+    return { 
+        ...markingResult, 
+        collaboratorName: `${collaborator.first_name} ${collaborator.last_name}`, 
+        collaboratorInfo: {
+            photo: collaborator.photo,
+            email: collaborator.email,
+            phone: collaborator.phone,
+            position: collaborator.position_name
+        }, 
+        confidence: "1.0000",
+        match: true,
+        type: detectedType,
+        time_feedback: timeFeedback,
+        shift: currentShift ? {
+            id: currentShift.id,
+            name: currentShift.name,
+            prefix: currentShift.prefix,
+            start_time: currentShift.start_time,
+            end_time: currentShift.end_time,
+            shift_type: currentShift.shift_type,
+            entry_start_buffer: currentShift.entry_start_buffer,
+            entry_end_buffer: currentShift.entry_end_buffer,
+            exit_start_buffer: currentShift.exit_start_buffer,
+            exit_end_buffer: currentShift.exit_end_buffer
+        } : null,
+        validation: {
+            has_schedule: !!currentShift,
+            shift_match: timeMatch,
+            zone_match: currentShift ? zoneMatch : false,
+            assigned_zone_name: assignedZoneName
+        },
+        geofence_results: geofenceResults,
+        zone_name: matchedZoneName || (geofenceResults.length > 0 ? 'Fuera de Cobertura' : 'Sin Zona'),
+        lat: coords?.lat,
+        lng: coords?.lng
+    };
   }
 }
