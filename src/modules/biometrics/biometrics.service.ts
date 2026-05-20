@@ -199,10 +199,10 @@ export class BiometricService {
         companyId,
         {
             identification: bestMatch.identification,
-            lat: coords?.lat,
-            lng: coords?.lng,
+            lat: coords?.lat ?? undefined,
+            lng: coords?.lng ?? undefined,
             scheduleId: currentShift?.schedule_id || null,
-            type: detectedType === 'N/A' ? undefined : detectedType,
+            type: detectedType === 'N/A' ? 'N/A' : detectedType,
             status: 'Unknown', // Let attendance service determine the final status
             markingZoneId: currentShift?.marking_zone_id || null,
             isValidZone: zoneMatch
@@ -274,10 +274,10 @@ export class BiometricService {
     if (distance > threshold) {
         return await this.attendanceService.registerMarking(companyId, {
             identification,
-            lat: coords?.lat,
-            lng: coords?.lng,
+            lat: coords?.lat ?? undefined,
+            lng: coords?.lng ?? undefined,
             status: 'NoRecognition',
-            type: 'N/A'
+            type: undefined
         });
     }
 
@@ -285,10 +285,10 @@ export class BiometricService {
       companyId,
       {
         identification: identification,
-        lat: coords?.lat,
-        lng: coords?.lng,
+        lat: coords?.lat ?? undefined,
+        lng: coords?.lng ?? undefined,
         scheduleId: null,
-        type: 'N/A',
+        type: undefined,
         status: 'Unknown',
         markingZoneId: null,
         isValidZone: false
@@ -462,10 +462,10 @@ export class BiometricService {
       companyId,
       { 
           identification: collaborator.identification, 
-          lat: coords?.lat, 
-          lng: coords?.lng, 
+          lat: coords?.lat ?? undefined, 
+          lng: coords?.lng ?? undefined, 
           scheduleId: currentShift?.schedule_id || null,
-          type: detectedType === 'N/A' ? undefined : detectedType,
+          type: detectedType === 'N/A' ? 'N/A' : detectedType,
           status: 'Unknown',
           markingZoneId: currentShift?.marking_zone_id || null,
           isValidZone: zoneMatch
@@ -619,10 +619,10 @@ export class BiometricService {
       companyId,
       { 
           identification: collaborator.identification, 
-          lat: coords?.lat, 
-          lng: coords?.lng, 
+          lat: coords?.lat ?? undefined, 
+          lng: coords?.lng ?? undefined, 
           scheduleId: currentShift?.schedule_id || null,
-          type: detectedType === 'N/A' ? undefined : detectedType,
+          type: detectedType === 'N/A' ? 'N/A' : detectedType,
           status: 'Unknown',
           markingZoneId: currentShift?.marking_zone_id || null,
           isValidZone: zoneMatch
