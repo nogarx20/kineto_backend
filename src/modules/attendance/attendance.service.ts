@@ -124,7 +124,7 @@ export class AttendanceService {
         }
     }
 
-    // --- PASO 3: GEOVALLA (Salida temprana si falla) ---
+    // --- PASO 3: GEOVALLA (Retorno temprano si falla) ---
     if (!isValidZone) {
         const id = generateUUID();
         await this.repository.createRecord({
