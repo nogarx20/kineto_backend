@@ -163,7 +163,7 @@ export class AttendanceService {
                 if (roundedMarkingTime < entryWindowStart) {
                     status = 'EarlyEntry';
                 } else if (roundedMarkingTime > entryWindowEnd) {
-                    status = 'Late';
+                    status = 'LateEntry';
                 } else {
                     status = 'OnTime';
                 }
@@ -174,7 +174,7 @@ export class AttendanceService {
                 if (roundedMarkingTime < exitWindowStart) {
                     status = 'EarlyDeparture';
                 } else if (roundedMarkingTime > exitWindowEnd) {
-                    status = 'Late'; // O Overtime si se implementa como un estado separado
+                    status = 'LateDeparture';
                 } else {
                     status = 'OnTime';
                 }
