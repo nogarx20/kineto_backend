@@ -202,7 +202,7 @@ export class BiometricService {
             lat: coords?.lat ?? undefined,
             lng: coords?.lng ?? undefined,
             scheduleId: currentShift?.schedule_id || null,
-            type: detectedType === 'N/A' ? 'N/A' : detectedType,
+            type: detectedType,
             status: 'Unknown', // Let attendance service determine the final status
             markingZoneId: currentShift?.marking_zone_id || null,
             isValidZone: zoneMatch
@@ -465,7 +465,7 @@ export class BiometricService {
           lat: coords?.lat ?? undefined, 
           lng: coords?.lng ?? undefined, 
           scheduleId: currentShift?.schedule_id || null,
-          type: detectedType === 'N/A' ? 'N/A' : detectedType,
+          type: detectedType,
           status: 'Unknown',
           markingZoneId: currentShift?.marking_zone_id || null,
           isValidZone: zoneMatch
@@ -517,6 +517,8 @@ export class BiometricService {
   }
 
   async verifyFingerAndMark(companyId: string, template: any, coords?: { lat: number, lng: number }) {
+    if (!template) throw new Error("Faltan datos de la firma biométrica (template/assertion).");
+
     // 1. Identificar al colaborador mediante la respuesta de WebAuthn
     let collaboratorId = null;
     
@@ -526,7 +528,7 @@ export class BiometricService {
         collaboratorId = buffer.toString('utf8');
     } else {
         // Fallback: Buscar el ID de la credencial en el mapeo de huellas
-        const credentialId = template?.id;
+        const credentialId = template?.id ?? null;
         const [rows]: any = await pool.execute(
             'SELECT collaborator_id FROM collaborator_fingerprints WHERE biometric_template = ? AND company_id = ?',
             [credentialId, companyId]
@@ -622,7 +624,7 @@ export class BiometricService {
           lat: coords?.lat ?? undefined, 
           lng: coords?.lng ?? undefined, 
           scheduleId: currentShift?.schedule_id || null,
-          type: detectedType === 'N/A' ? 'N/A' : detectedType,
+          type: detectedType,
           status: 'Unknown',
           markingZoneId: currentShift?.marking_zone_id || null,
           isValidZone: zoneMatch
