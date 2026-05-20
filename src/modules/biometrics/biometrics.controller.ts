@@ -47,6 +47,21 @@ export class BiometricController {
     }
   };
 
+  verifyPinAndMark = async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const { pin, lat, lng } = (req as any).body;
+      const result = await service.verifyPinAndMark(user.company_id, pin, { lat, lng });
+      await logAudit(req, 'PIN_MARK_SUCCESS', 'attendance', result.id, { pin_used: true });
+      (res as any).json(result);
+    } catch (err: any) {
+      await logAudit(req, 'PIN_MARK_FAILED', 'attendance', undefined, { error: err.message });
+      const isMatchError = err.message.includes('PIN no reconocido');
+      const status = isMatchError ? 401 : 400;
+      (res as any).status(status).json({ error: err.message, code: isMatchError ? 'PIN_FAILED' : 'MARKING_ERROR' });
+    }
+  };
+
   delete = async (req: Request, res: Response) => {
     try {
       const user = (req as any).user;
