@@ -628,6 +628,8 @@ export class BiometricService {
         }, 
         confidence: "1.0000",
         match: true,
+        biometricMethod: 'FINGER',
+        finger_name: collaborator.finger_name,
         type: detectedType,
         shift: currentShift ? {
             id: currentShift.id,
