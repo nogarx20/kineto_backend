@@ -277,7 +277,7 @@ export class BiometricService {
             lat: coords?.lat ?? undefined,
             lng: coords?.lng ?? undefined,
             status: 'NoRecognition',
-            type: undefined
+            type: 'N/A'
         });
     }
 
@@ -288,7 +288,7 @@ export class BiometricService {
         lat: coords?.lat ?? undefined,
         lng: coords?.lng ?? undefined,
         scheduleId: null,
-        type: undefined,
+        type: 'N/A',
         status: 'Unknown',
         markingZoneId: null,
         isValidZone: false
