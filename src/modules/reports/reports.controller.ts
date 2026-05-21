@@ -28,16 +28,27 @@ export class ReportsController {
   async getActivityLog(req: Request, res: Response) {
     try {
       const user = (req as any).user;
-      const { page = 1, limit = 20, search, range = 'this_month', startDate, endDate } = req.query;
+      const { page = '1', limit = '20', search, range = 'this_month', startDate, endDate } = req.query;
       const data = await service.getActivityLog(user.company_id, {
         page: parseInt(page as string),
         limit: parseInt(limit as string),
         search: search as string,
-        range: range as string,
-        startDate: startDate as string,
-        endDate: endDate as string
+        range: String(range),
+        startDate: typeof startDate === 'string' ? startDate : undefined,
+        endDate: typeof endDate === 'string' ? endDate : undefined
       });
       (res as any).json({ data });
+    } catch (err: any) {
+      (res as any).status(500).json({ error: err.message });
+    }
+  }
+
+  async updateActivityLogEntry(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const { id } = req.params;
+      const result = await service.updateActivityLogEntry(user.company_id, id as string, req.body);
+      (res as any).json(result);
     } catch (err: any) {
       (res as any).status(500).json({ error: err.message });
     }
