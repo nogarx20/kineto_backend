@@ -181,16 +181,16 @@ export class ReportsRepository {
           dateFilter = 'DATE(a.timestamp) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)';
           break;
         case 'this_week':
-          dateFilter = 'YEARWEEK(a.timestamp, 1) = YEARWEEK(CURDATE(), 1)';
+          dateFilter = 'YEAR(a.timestamp) = YEAR(CURDATE()) AND WEEK(a.timestamp, 1) = WEEK(CURDATE(), 1)';
           break;
         case 'last_week':
-          dateFilter = 'YEARWEEK(a.timestamp, 1) = YEARWEEK(DATE_SUB(CURDATE(), INTERVAL 1 WEEK), 1)';
+          dateFilter = 'YEAR(a.timestamp) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 WEEK)) AND WEEK(a.timestamp, 1) = WEEK(DATE_SUB(CURDATE(), INTERVAL 1 WEEK), 1)';
           break;
         case 'this_month':
           dateFilter = 'MONTH(a.timestamp) = MONTH(CURDATE()) AND YEAR(a.timestamp) = YEAR(CURDATE())';
           break;
         case 'last_month':
-          dateFilter = 'MONTH(a.timestamp) = MONTH(DATE_SUB(CURDATE(), INTERVAL 1 MONTH)) AND YEAR(a.timestamp) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))';
+          dateFilter = 'a.timestamp >= LAST_DAY(NOW() - INTERVAL 2 MONTH) + INTERVAL 1 DAY AND a.timestamp < LAST_DAY(NOW() - INTERVAL 1 MONTH) + INTERVAL 1 DAY';
           break;
         case 'this_year':
           dateFilter = 'YEAR(a.timestamp) = YEAR(CURDATE())';
