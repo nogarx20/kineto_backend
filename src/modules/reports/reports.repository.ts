@@ -234,7 +234,11 @@ export class ReportsRepository {
       sh.end_time_2 AS shift_end_time_2,
       cc.id AS cost_center_id, 
       cc.name AS cost_center_name,
-      mz.name AS zone_name
+      cc.code AS cost_center_code,
+      mz.name AS zone_name,
+      mz.lat AS zone_lat,
+      mz.lng AS zone_lng,
+      a.biometric_method
       FROM attendance_records a
       INNER JOIN collaborators c ON a.collaborator_id = c.id
       LEFT JOIN schedules sd ON a.schedule_id = sd.id
