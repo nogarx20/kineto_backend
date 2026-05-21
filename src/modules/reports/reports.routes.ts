@@ -11,5 +11,6 @@ router.use(authMiddleware, tenantMiddleware);
 
 router.get('/stats', rbacMiddleware('dashboard.view'), controller.getStats);
 router.get('/audit-logs', rbacMiddleware('security.view'), controller.getAuditLogs);
+router.get('/activity-log', rbacMiddleware('reports.view'), controller.getActivityLog);
 
 export default router;
