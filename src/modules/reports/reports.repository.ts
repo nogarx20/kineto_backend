@@ -164,7 +164,7 @@ export class ReportsRepository {
     return rows;
   }
 
-  async getActivityLog(companyId: string, params: { limit: number, offset: number, search?: string, range: string, startDate?: string, endDate?: string }) {
+  async getActivityLog(companyId: string, params: { limit: number, offset: number, search?: string, range: string, startDate?: string, endDate?: string, status?: string }) {
     let whereClause = 'a.company_id = ? AND a.onDelete = 0';
     const queryParams: any[] = [companyId];
 
@@ -189,6 +189,12 @@ export class ReportsRepository {
         case 'last_month':
           dateFilter = 'MONTH(a.timestamp) = MONTH(DATE_SUB(CURDATE(), INTERVAL 1 MONTH)) AND YEAR(a.timestamp) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))';
           break;
+        case 'this_year':
+          dateFilter = 'YEAR(a.timestamp) = YEAR(CURDATE())';
+          break;
+        case 'last_year':
+          dateFilter = 'YEAR(a.timestamp) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 YEAR))';
+          break;
       }
       if (dateFilter) whereClause += ` AND ${dateFilter}`;
     }
@@ -197,6 +203,11 @@ export class ReportsRepository {
       whereClause += ` AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.identification LIKE ? OR c.email LIKE ? OR sh.name LIKE ? OR cc.name LIKE ?)`;
       const s = `%${params.search}%`;
       queryParams.push(s, s, s, s, s, s);
+    }
+
+    if (params.status && params.status !== 'All') {
+      whereClause += ` AND a.status = ?`;
+      queryParams.push(params.status);
     }
 
     const sql = `
