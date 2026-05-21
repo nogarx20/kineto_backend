@@ -24,5 +24,22 @@ export class ReportsController {
       (res as any).status(500).json({ error: err.message });
     }
   }
-}
 
+  async getActivityLog(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const { page = 1, limit = 20, search, range = 'this_month', startDate, endDate } = req.query;
+      const data = await service.getActivityLog(user.company_id, {
+        page: parseInt(page as string),
+        limit: parseInt(limit as string),
+        search: search as string,
+        range: range as string,
+        startDate: startDate as string,
+        endDate: endDate as string
+      });
+      (res as any).json({ data });
+    } catch (err: any) {
+      (res as any).status(500).json({ error: err.message });
+    }
+  }
+}
