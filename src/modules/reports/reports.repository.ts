@@ -220,4 +220,8 @@ export class ReportsRepository {
     const [rows]: any = await pool.query(sql, [...queryParams, params.limit, params.offset]);
     return rows;
   }
+
+  async updateActivityLogEntry(id: string, data: any) {
+    await pool.query('UPDATE attendance_records SET ? WHERE id = ?', [data, id]);
+  }
 }
