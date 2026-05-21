@@ -1,4 +1,5 @@
 import { ReportsRepository } from './reports.repository';
+import pool from '../../config/database';
 
 export class ReportsService {
   private repository = new ReportsRepository();
@@ -270,5 +271,80 @@ export class ReportsService {
     const offset = (params.page - 1) * params.limit;
     // El repositorio debe ejecutar un JOIN entre attendance_records, collaborators, shifts, cost_centers y marking_zones
     return await this.repository.getActivityLog(companyId, { ...params, offset });
+  }
+
+  async updateActivityLogEntry(companyId: string, id: string, data: any) {
+    // 1. Obtener registro actual
+    const [record]: any = await pool.query(
+      'SELECT * FROM attendance_records WHERE id = ? AND company_id = ?', 
+      [id, companyId]
+    );
+    if (!record || record.length === 0) throw new Error('Registro no encontrado');
+    const r = record[0];
+
+    // 2. Obtener datos del turno para recalcular
+    const shiftId = data.shift_id || r.shift_id;
+    const [shiftRows]: any = await pool.query('SELECT * FROM shifts WHERE id = ?', [shiftId]);
+    const shift = shiftRows[0];
+
+    const timestamp = data.timestamp || r.timestamp;
+    const markingZoneId = data.marking_zone_id || r.marking_zone_id;
+    
+    // 3. Lógica de Recálculo de Estado
+    let status = 'OnTime';
+    let isValidZone = r.is_valid_zone;
+
+    if (shift) {
+      const markingDate = new Date(timestamp);
+      const [sh, sm] = shift.start_time.split(':').map(Number);
+      const shiftStart = new Date(markingDate);
+      shiftStart.setHours(sh, sm, 0, 0);
+
+      const [eh, em] = shift.end_time.split(':').map(Number);
+      const shiftEnd = new Date(markingDate);
+      shiftEnd.setHours(eh, em, 0, 0);
+      if (shiftEnd < shiftStart) shiftEnd.setDate(shiftEnd.getDate() + 1);
+
+      if (r.type === 'IN') {
+        const diff = (markingDate.getTime() - shiftStart.getTime()) / 60000;
+        status = diff > (shift.entry_start_buffer || 0) ? 'LateEntry' : 'OnTime';
+      } else {
+        const diff = (shiftEnd.getTime() - markingDate.getTime()) / 60000;
+        status = diff > (shift.exit_end_buffer || 0) ? 'EarlyDeparture' : 'OnTime';
+      }
+    }
+
+    // Validar Geocerca si se cambió o si existen coordenadas
+    if (markingZoneId && r.lat && r.lng) {
+      const [zoneRows]: any = await pool.query('SELECT lat, lng, radius FROM marking_zones WHERE id = ?', [markingZoneId]);
+      if (zoneRows[0]) {
+        const zone = zoneRows[0];
+        const dist = this.calculateDistance(r.lat, r.lng, zone.lat, zone.lng);
+        isValidZone = dist <= zone.radius ? 1 : 0;
+        if (!isValidZone) status = 'WrongGeofence';
+      }
+    }
+
+    // 4. Actualizar en base de datos
+    await this.repository.updateActivityLogEntry(id, {
+      timestamp,
+      shift_id: shiftId,
+      cost_center_id: data.cost_center_id || r.cost_center_id,
+      marking_zone_id: markingZoneId,
+      status,
+      is_valid_zone: isValidZone
+    });
+
+    return { id, status, isValidZone };
+  }
+
+  private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+    const R = 6371e3; // Radio de la tierra en metros
+    const phi1 = lat1 * Math.PI/180;
+    const phi2 = lat2 * Math.PI/180;
+    const dPhi = (lat2-lat1) * Math.PI/180;
+    const dLambda = (lon2-lon1) * Math.PI/180;
+    const a = Math.sin(dPhi/2) * Math.sin(dPhi/2) + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dLambda/2) * Math.sin(dLambda/2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   }
 }
