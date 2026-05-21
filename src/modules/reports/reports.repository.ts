@@ -163,4 +163,61 @@ export class ReportsRepository {
     `, [companyId]);
     return rows;
   }
+
+  async getActivityLog(companyId: string, params: { limit: number, offset: number, search?: string, range: string, startDate?: string, endDate?: string }) {
+    let whereClause = 'a.company_id = ? AND a.onDelete = 0';
+    const queryParams: any[] = [companyId];
+
+    if (params.range && params.range !== 'all') {
+      let dateFilter = '';
+      switch (params.range) {
+        case 'today':
+          dateFilter = 'DATE(a.timestamp) = CURDATE()';
+          break;
+        case 'yesterday':
+          dateFilter = 'DATE(a.timestamp) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)';
+          break;
+        case 'this_week':
+          dateFilter = 'YEARWEEK(a.timestamp, 1) = YEARWEEK(CURDATE(), 1)';
+          break;
+        case 'last_week':
+          dateFilter = 'YEARWEEK(a.timestamp, 1) = YEARWEEK(DATE_SUB(CURDATE(), INTERVAL 1 WEEK), 1)';
+          break;
+        case 'this_month':
+          dateFilter = 'MONTH(a.timestamp) = MONTH(CURDATE()) AND YEAR(a.timestamp) = YEAR(CURDATE())';
+          break;
+        case 'last_month':
+          dateFilter = 'MONTH(a.timestamp) = MONTH(DATE_SUB(CURDATE(), INTERVAL 1 MONTH)) AND YEAR(a.timestamp) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))';
+          break;
+      }
+      if (dateFilter) whereClause += ` AND ${dateFilter}`;
+    }
+
+    if (params.search) {
+      whereClause += ` AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.identification LIKE ? OR c.email LIKE ? OR sh.name LIKE ? OR cc.name LIKE ?)`;
+      const s = `%${params.search}%`;
+      queryParams.push(s, s, s, s, s, s);
+    }
+
+    const sql = `
+      SELECT 
+        a.id, a.timestamp, a.type, a.status, a.is_valid_zone,
+        a.shift_id, a.cost_center_id, a.marking_zone_id,
+        c.first_name, c.last_name, c.identification, c.email, c.photo,
+        sh.name as shift_name,
+        cc.name as cost_center_name,
+        mz.name as zone_name
+      FROM attendance_records a
+      INNER JOIN collaborators c ON a.collaborator_id = c.id
+      LEFT JOIN shifts sh ON a.shift_id = sh.id
+      LEFT JOIN cost_centers cc ON a.cost_center_id = cc.id
+      LEFT JOIN marking_zones mz ON a.marking_zone_id = mz.id
+      WHERE ${whereClause}
+      ORDER BY a.timestamp DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    const [rows]: any = await pool.query(sql, [...queryParams, params.limit, params.offset]);
+    return rows;
+  }
 }
