@@ -203,9 +203,9 @@ export class ReportsRepository {
     }
 
     if (params.search) {
-      whereClause += ` AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.identification LIKE ? OR c.email LIKE ? OR sh.name LIKE ? OR cc.name LIKE ?)`;
+      whereClause += ` AND (c.first_name LIKE ? OR c.last_name LIKE ? OR c.identification LIKE ? OR c.email LIKE ? OR sh.name LIKE ? OR cc.name LIKE ? OR mz.name LIKE ? OR a.status LIKE ? OR a.biometric_method LIKE ?)`;
       const s = `%${params.search}%`;
-      queryParams.push(s, s, s, s, s, s);
+      queryParams.push(s, s, s, s, s, s, s, s, s);
     }
 
     if (params.status && params.status !== 'All') {
