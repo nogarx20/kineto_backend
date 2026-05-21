@@ -267,7 +267,7 @@ export class ReportsService {
     return await this.repository.getAuditLogs(companyId);
   }
 
-  async getActivityLog(companyId: string, params: { page: number, limit: number, search?: string, range: string, startDate?: string, endDate?: string }) {
+  async getActivityLog(companyId: string, params: { page: number, limit: number, search?: string, range: string, startDate?: string, endDate?: string, status?: string }) {
     const offset = (params.page - 1) * params.limit;
     // El repositorio debe ejecutar un JOIN entre attendance_records, collaborators, shifts, cost_centers y marking_zones
     return await this.repository.getActivityLog(companyId, { ...params, offset });
