@@ -168,7 +168,10 @@ export class ReportsRepository {
     let whereClause = 'a.company_id = ? AND a.onDelete = 0';
     const queryParams: any[] = [companyId];
 
-    if (params.range && params.range !== 'all') {
+    if (params.startDate && params.endDate) {
+      whereClause += ' AND DATE(a.timestamp) BETWEEN ? AND ?';
+      queryParams.push(params.startDate, params.endDate);
+    } else if (params.range && params.range !== 'all') {
       let dateFilter = '';
       switch (params.range) {
         case 'today':
