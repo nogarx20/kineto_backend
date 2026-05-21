@@ -227,6 +227,11 @@ export class ReportsRepository {
       c.email, c.photo,
       sh.id AS shift_id, 
       sh.name AS shift_name,
+      sh.shift_type,
+      sh.start_time AS shift_start_time,
+      sh.end_time AS shift_end_time,
+      sh.start_time_2 AS shift_start_time_2,
+      sh.end_time_2 AS shift_end_time_2,
       cc.id AS cost_center_id, 
       cc.name AS cost_center_name,
       mz.name AS zone_name
