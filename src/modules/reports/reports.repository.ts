@@ -215,16 +215,26 @@ export class ReportsRepository {
 
     const sql = `
       SELECT 
-        a.id, a.timestamp, a.type, a.status, a.is_valid_zone,
-        a.shift_id, a.cost_center_id, a.marking_zone_id,
-        c.first_name, c.last_name, c.identification, c.email, c.photo,
-        sh.name as shift_name,
-        cc.name as cost_center_name,
-        mz.name as zone_name
+      a.id, 
+      a.timestamp, 
+      a.type, 
+      a.status, 
+      a.is_valid_zone,
+      a.marking_zone_id,
+      c.first_name, 
+      c.last_name, 
+      c.identification, 
+      c.email, c.photo,
+      sh.id AS shift_id, 
+      sh.name AS shift_name,
+      cc.id AS cost_center_id, 
+      cc.name AS cost_center_name,
+      mz.name AS zone_name
       FROM attendance_records a
       INNER JOIN collaborators c ON a.collaborator_id = c.id
-      LEFT JOIN shifts sh ON a.shift_id = sh.id
-      LEFT JOIN cost_centers cc ON a.cost_center_id = cc.id
+      LEFT JOIN schedules sd ON a.schedule_id = sd.id
+      LEFT JOIN shifts sh ON sd.shift_id = sh.id
+      LEFT JOIN cost_centers cc ON sd.cost_center_id = cc.id
       LEFT JOIN marking_zones mz ON a.marking_zone_id = mz.id
       WHERE ${whereClause}
       ORDER BY a.timestamp DESC
