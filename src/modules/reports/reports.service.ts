@@ -279,11 +279,14 @@ export class ReportsService {
    */
   private async calculateMarkingAnalysis(companyId: string, id: string, data: any) {
     const [record]: any = await pool.query(
-      'SELECT * FROM attendance_records WHERE id = ? AND company_id = ?',
+      'SELECT r.*, c.id as collaborator_id FROM attendance_records r JOIN collaborators c ON r.collaborator_id = c.id WHERE r.id = ? AND r.company_id = ?',
       [id, companyId]
     );
     if (!record || record.length === 0) throw new Error('Registro no encontrado');
     const r = record[0];
+    const collaboratorId = r.collaborator_id;
+    const timestamp = data.timestamp || r.timestamp;
+    const datePart = (typeof timestamp === 'string' ? timestamp : timestamp.toISOString()).split('T')[0].split(' ')[0];
 
     // Obtener tolerancia de la empresa desde settings
     const [company]: any = await pool.query('SELECT settings FROM companies WHERE id = ?', [companyId]);
@@ -291,20 +294,35 @@ export class ReportsService {
     const travelTolerance = Number(settings.travelTolerance || 0);
 
     let shift;
+    let hasExistingSchedule = false;
+
     if (data.shift_id) {
         const [rows]: any = await pool.query('SELECT * FROM shifts WHERE id = ? AND company_id = ?', [data.shift_id, companyId]);
         shift = rows[0];
     } else {
+        // 1. Intentar por schedule_id vinculado
         const [shiftRows]: any = await pool.query(
           `SELECT sh.* FROM shifts sh
            JOIN schedules sd ON sd.shift_id = sh.id
            WHERE sd.id = ?`,
           [r.schedule_id]
         );
-        shift = shiftRows[0];
+        
+        if (shiftRows[0]) {
+            shift = shiftRows[0];
+        } else {
+            // 2. Si no tiene vínculo, buscar si ya existe una programación activa para ese colaborador/fecha
+            const [activeSched]: any = await pool.query(
+                'SELECT sh.*, sd.id as schedule_id FROM shifts sh JOIN schedules sd ON sd.shift_id = sh.id WHERE sd.collaborator_id = ? AND DATE(sd.date) = DATE(?) AND sd.company_id = ? AND sd.onDelete = 0 LIMIT 1',
+                [collaboratorId, datePart, companyId]
+            );
+            if (activeSched[0]) {
+                shift = activeSched[0];
+                hasExistingSchedule = true;
+            }
+        }
     }
-    
-    const timestamp = data.timestamp || r.timestamp;
+
     const markingZoneId = data.marking_zone_id || r.marking_zone_id;
     
     let type = r.type;
@@ -388,16 +406,34 @@ export class ReportsService {
       }
     }
 
+    // 5. Si sigue sin turno o está en NoTurn, obtener sugerencias del contrato
+    let suggestedCostCenter = r.cost_center_id;
+    let suggestedMarkingZone = markingZoneId;
+
+    if (status === 'NoTurn' || !r.schedule_id) {
+        const [contract]: any = await pool.query(
+            `SELECT cost_center_id, marking_zone_id FROM contracts 
+             WHERE collaborator_id = ? AND company_id = ? AND status = 'Activo' AND onDelete = 0 
+             AND DATE(?) BETWEEN DATE(start_date) AND COALESCE(DATE(end_date), '9999-12-31') LIMIT 1`,
+            [collaboratorId, companyId, datePart]
+        );
+        if (contract[0]) {
+            suggestedCostCenter = data.cost_center_id || contract[0].cost_center_id;
+            suggestedMarkingZone = data.marking_zone_id || contract[0].marking_zone_id;
+        }
+    }
+
     // Retornar análisis permitiendo overrides manuales si vienen en el body
     return { 
       timestamp, 
       type: data.type || type, 
       status: data.status || status, 
+      hasExistingSchedule,
       isValidZone, 
       lat: finalLat, 
       lng: finalLng, 
-      cost_center_id: data.cost_center_id !== undefined ? data.cost_center_id : r.cost_center_id, 
-      marking_zone_id: markingZoneId 
+      cost_center_id: suggestedCostCenter, 
+      marking_zone_id: suggestedMarkingZone 
     };
   }
 
@@ -406,33 +442,41 @@ export class ReportsService {
     return {
         status: analysis.status,
         type: analysis.type,
-        is_valid_zone: analysis.isValidZone
+        is_valid_zone: analysis.isValidZone,
+        has_existing_schedule: analysis.hasExistingSchedule,
+        suggested_shift_id: analysis.hasExistingSchedule ? (analysis as any).shift_id : null,
+        suggested_cost_center_id: analysis.cost_center_id,
+        suggested_marking_zone_id: analysis.marking_zone_id
     };
   }
 
   async updateActivityLogEntry(companyId: string, id: string, data: any) {
     // 1. Ejecutar análisis técnico
     const analysis = await this.calculateMarkingAnalysis(companyId, id, data);
-    const { timestamp, type, status, isValidZone, lat, lng, cost_center_id, marking_zone_id } = analysis as any;
+    const { timestamp, type, status, isValidZone, lat, lng, cost_center_id, marking_zone_id, hasExistingSchedule } = analysis as any;
 
     // 2. Obtener el registro para conocer el schedule_id
-    const [record]: any = await pool.query('SELECT schedule_id, collaborator_id, timestamp FROM attendance_records WHERE id = ? AND company_id = ?', [id, companyId]);
+    const [record]: any = await pool.query('SELECT schedule_id, collaborator_id, DATE(timestamp) as record_date FROM attendance_records WHERE id = ? AND company_id = ?', [id, companyId]);
     let scheduleId = record[0]?.schedule_id;
     const collaboratorId = record[0]?.collaborator_id;
-    const recordDate = record[0]?.timestamp.toISOString().split('T')[0];
+    const recordDate = record[0]?.record_date;
 
     // 3. Gestión de la vinculación del turno (Schedules)
     if (data.shift_id) {
+        // REGLA DE NEGOCIO: Inactivar cualquier otro turno para este día antes de proceder
+        await pool.query('UPDATE schedules SET onDelete = 1 WHERE collaborator_id = ? AND DATE(date) = DATE(?) AND company_id = ?', [collaboratorId, recordDate, companyId]);
+
         if (scheduleId) {
-            // Actualizar turno y CC en programación existente
-            await pool.query('UPDATE schedules SET shift_id = ?, cost_center_id = COALESCE(?, cost_center_id) WHERE id = ? AND company_id = ?', 
+            // Reactivar el schedule_id original con la nueva data
+            await pool.query('UPDATE schedules SET shift_id = ?, cost_center_id = COALESCE(?, cost_center_id), onDelete = 0 WHERE id = ? AND company_id = ?', 
                 [data.shift_id, cost_center_id, scheduleId, companyId]);
         } else {
-            // Intentar encontrar una programación existente para ese día o crear una nueva
-            const [existing]: any = await pool.query('SELECT id FROM schedules WHERE collaborator_id = ? AND date = ? AND company_id = ? AND onDelete = 0', [collaboratorId, recordDate, companyId]);
+            // Buscar si ya existía uno (aunque lo acabemos de marcar onDelete=1 arriba) para re-usar ID
+            // Usamos DATE() para evitar conflictos con componentes de tiempo
+            const [existing]: any = await pool.query('SELECT id FROM schedules WHERE collaborator_id = ? AND DATE(date) = DATE(?) AND company_id = ? LIMIT 1', [collaboratorId, recordDate, companyId]);
             if (existing.length > 0) {
                 scheduleId = existing[0].id;
-                await pool.query('UPDATE schedules SET shift_id = ?, cost_center_id = COALESCE(?, cost_center_id) WHERE id = ?', [data.shift_id, cost_center_id, scheduleId]);
+                await pool.query('UPDATE schedules SET shift_id = ?, cost_center_id = COALESCE(?, cost_center_id), onDelete = 0 WHERE id = ?', [data.shift_id, cost_center_id, scheduleId]);
             } else {
                 scheduleId = generateUUID();
                 await pool.query('INSERT INTO schedules (id, company_id, collaborator_id, shift_id, date, cost_center_id) VALUES (?, ?, ?, ?, ?, ?)', 
@@ -440,8 +484,8 @@ export class ReportsService {
             }
         }
     } else if (scheduleId && cost_center_id) {
-        // Solo actualizar el centro de costos si ya existe un schedule
-        await pool.query('UPDATE schedules SET cost_center_id = ? WHERE id = ? AND company_id = ?', 
+        // Solo actualizar el centro de costos si ya existe un schedule y reactivarlo
+        await pool.query('UPDATE schedules SET cost_center_id = ?, onDelete = 0 WHERE id = ? AND company_id = ?', 
             [cost_center_id, scheduleId, companyId]);
     }
 
