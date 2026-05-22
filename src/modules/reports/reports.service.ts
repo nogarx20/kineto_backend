@@ -274,6 +274,73 @@ export class ReportsService {
     return await this.repository.getActivityLog(companyId, { ...params, offset });
   }
 
+  async getAttendanceControl(companyId: string, date: string) {
+    const rawData = await this.repository.getAttendanceControlData(companyId, date);
+    const groups = new Map();
+
+    rawData.forEach((row: any) => {
+      if (!groups.has(row.schedule_id)) {
+        groups.set(row.schedule_id, {
+          schedule_id: row.schedule_id,
+          collaborator: {
+            id: row.collaborator_id,
+            name: `${row.first_name} ${row.last_name}`,
+            identification: row.identification,
+            photo: row.photo,
+            email: row.email
+          },
+          shift: {
+            name: row.shift_name,
+            type: row.shift_type,
+            start_time: row.start_time,
+            end_time: row.end_time,
+            start_time_2: row.start_time_2,
+            end_time_2: row.end_time_2
+          },
+          cost_center: row.cost_center_name,
+          markings: []
+        });
+      }
+      if (row.marking_id) {
+        groups.get(row.schedule_id).markings.push({
+          id: row.marking_id,
+          timestamp: row.marking_timestamp,
+          type: row.marking_type,
+          status: row.marking_status,
+          method: row.biometric_method
+        });
+      }
+    });
+
+    return Array.from(groups.values()).map(g => {
+      const isPartido = g.shift.type === 'Partido';
+      const markingsIn = g.markings.filter((m: any) => m.type === 'IN');
+      const markingsOut = g.markings.filter((m: any) => m.type === 'OUT');
+
+      const in1 = markingsIn[0] || null;
+      const out1 = isPartido ? (markingsOut.length > 1 ? markingsOut[0] : null) : (markingsOut[markingsOut.length - 1] || null);
+      const in2 = isPartido ? (markingsIn.length > 1 ? markingsIn[markingsIn.length - 1] : null) : null;
+      const out2 = isPartido ? (markingsOut[markingsOut.length - 1] || null) : null;
+
+      let general_status = 'Inasistencia';
+      const required = isPartido ? 4 : 2;
+      const present = [in1, out1, in2, out2].filter(Boolean).length;
+
+      if (present === 0) {
+        general_status = 'Inasistencia';
+      } else if (present < required) {
+        general_status = 'Incompleto';
+      } else {
+        const hasBadStatus = [in1, out1, in2, out2].filter(Boolean).some((m: any) => 
+          ['LateEntry', 'EarlyDeparture'].includes(m.status)
+        );
+        general_status = hasBadStatus ? 'Observaciones' : 'Cumplido';
+      }
+
+      return { ...g, in1, out1, in2, out2, general_status };
+    });
+  }
+
   /**
    * Realiza el análisis técnico de un marcaje basado en reglas de negocio (Horarios, Geocercas, Tolerancias)
    */
