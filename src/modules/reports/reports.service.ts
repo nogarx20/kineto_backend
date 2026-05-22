@@ -284,6 +284,11 @@ export class ReportsService {
     if (!record || record.length === 0) throw new Error('Registro no encontrado');
     const r = record[0];
 
+    // Obtener tolerancia de la empresa desde settings
+    const [company]: any = await pool.query('SELECT settings FROM companies WHERE id = ?', [companyId]);
+    const settings = typeof company[0]?.settings === 'string' ? JSON.parse(company[0].settings) : (company[0]?.settings || {});
+    const travelTolerance = Number(settings.travelTolerance || 0);
+
     const [shiftRows]: any = await pool.query(
       `SELECT sh.* FROM shifts sh
        JOIN schedules sd ON sd.shift_id = sh.id
@@ -323,19 +328,23 @@ export class ReportsService {
 
       if (winIn1?.inWindow) {
         type = 'IN';
-        status = markingDate > winIn1.target ? 'LateEntry' : 'OnTime';
+        const lateLimit = new Date(winIn1.target.getTime() + (travelTolerance * 60000));
+        status = markingDate > lateLimit ? 'LateEntry' : 'OnTime';
       } else if (winOut1?.inWindow) {
         type = 'OUT';
-        status = markingDate < winOut1.target ? 'EarlyDeparture' : 'OnTime';
+        const earlyLimit = new Date(winOut1.target.getTime() - (travelTolerance * 60000));
+        status = markingDate < earlyLimit ? 'EarlyDeparture' : 'OnTime';
       } else if (shift.shift_type === 'Partido') {
         const winIn2 = checkWindow(shift.start_time_2, shift.entry_start_buffer || 0, shift.entry_end_buffer || 0);
         const winOut2 = checkWindow(shift.end_time_2, shift.exit_start_buffer || 0, shift.exit_end_buffer || 0);
         if (winIn2?.inWindow) {
           type = 'IN';
-          status = markingDate > winIn2.target ? 'LateEntry' : 'OnTime';
+          const lateLimit = new Date(winIn2.target.getTime() + (travelTolerance * 60000));
+          status = markingDate > lateLimit ? 'LateEntry' : 'OnTime';
         } else if (winOut2?.inWindow) {
           type = 'OUT';
-          status = markingDate < winOut2.target ? 'EarlyDeparture' : 'OnTime';
+          const earlyLimit = new Date(winOut2.target.getTime() - (travelTolerance * 60000));
+          status = markingDate < earlyLimit ? 'EarlyDeparture' : 'OnTime';
         } else {
           type = 'N/A';
           status = 'NoTurn';
