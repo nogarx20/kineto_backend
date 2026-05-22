@@ -44,6 +44,18 @@ export class ReportsController {
     }
   }
 
+  async getAttendanceControl(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const { date } = req.query;
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+      const data = await service.getAttendanceControl(user.company_id, (date as string) || today);
+      (res as any).json(data);
+    } catch (err: any) {
+      (res as any).status(500).json({ error: err.message });
+    }
+  }
+
   async updateActivityLogEntry(req: Request, res: Response) {
     try {
       const user = (req as any).user;
