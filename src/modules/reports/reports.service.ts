@@ -1,5 +1,6 @@
 import { ReportsRepository } from './reports.repository';
 import pool from '../../config/database';
+import { generateUUID } from '../../utils/uuid';
 
 export class ReportsService {
   private repository = new ReportsRepository();
@@ -289,13 +290,19 @@ export class ReportsService {
     const settings = typeof company[0]?.settings === 'string' ? JSON.parse(company[0].settings) : (company[0]?.settings || {});
     const travelTolerance = Number(settings.travelTolerance || 0);
 
-    const [shiftRows]: any = await pool.query(
-      `SELECT sh.* FROM shifts sh
-       JOIN schedules sd ON sd.shift_id = sh.id
-       WHERE sd.id = ?`,
-      [r.schedule_id]
-    );
-    const shift = shiftRows[0];
+    let shift;
+    if (data.shift_id) {
+        const [rows]: any = await pool.query('SELECT * FROM shifts WHERE id = ? AND company_id = ?', [data.shift_id, companyId]);
+        shift = rows[0];
+    } else {
+        const [shiftRows]: any = await pool.query(
+          `SELECT sh.* FROM shifts sh
+           JOIN schedules sd ON sd.shift_id = sh.id
+           WHERE sd.id = ?`,
+          [r.schedule_id]
+        );
+        shift = shiftRows[0];
+    }
     
     const timestamp = data.timestamp || r.timestamp;
     const markingZoneId = data.marking_zone_id || r.marking_zone_id;
@@ -409,24 +416,45 @@ export class ReportsService {
     const { timestamp, type, status, isValidZone, lat, lng, cost_center_id, marking_zone_id } = analysis as any;
 
     // 2. Obtener el registro para conocer el schedule_id
-    const [record]: any = await pool.query('SELECT schedule_id FROM attendance_records WHERE id = ? AND company_id = ?', [id, companyId]);
-    const scheduleId = record[0]?.schedule_id;
+    const [record]: any = await pool.query('SELECT schedule_id, collaborator_id, timestamp FROM attendance_records WHERE id = ? AND company_id = ?', [id, companyId]);
+    let scheduleId = record[0]?.schedule_id;
+    const collaboratorId = record[0]?.collaborator_id;
+    const recordDate = record[0]?.timestamp.toISOString().split('T')[0];
 
-    // 3. Si se proporcionó un cost_center_id, actualizar la tabla schedules
-    if (scheduleId && cost_center_id) {
+    // 3. Gestión de la vinculación del turno (Schedules)
+    if (data.shift_id) {
+        if (scheduleId) {
+            // Actualizar turno y CC en programación existente
+            await pool.query('UPDATE schedules SET shift_id = ?, cost_center_id = COALESCE(?, cost_center_id) WHERE id = ? AND company_id = ?', 
+                [data.shift_id, cost_center_id, scheduleId, companyId]);
+        } else {
+            // Intentar encontrar una programación existente para ese día o crear una nueva
+            const [existing]: any = await pool.query('SELECT id FROM schedules WHERE collaborator_id = ? AND date = ? AND company_id = ? AND onDelete = 0', [collaboratorId, recordDate, companyId]);
+            if (existing.length > 0) {
+                scheduleId = existing[0].id;
+                await pool.query('UPDATE schedules SET shift_id = ?, cost_center_id = COALESCE(?, cost_center_id) WHERE id = ?', [data.shift_id, cost_center_id, scheduleId]);
+            } else {
+                scheduleId = generateUUID();
+                await pool.query('INSERT INTO schedules (id, company_id, collaborator_id, shift_id, date, cost_center_id) VALUES (?, ?, ?, ?, ?, ?)', 
+                    [scheduleId, companyId, collaboratorId, data.shift_id, recordDate, cost_center_id]);
+            }
+        }
+    } else if (scheduleId && cost_center_id) {
+        // Solo actualizar el centro de costos si ya existe un schedule
         await pool.query('UPDATE schedules SET cost_center_id = ? WHERE id = ? AND company_id = ?', 
             [cost_center_id, scheduleId, companyId]);
     }
 
     // 4. Persistencia de cambios en el registro de asistencia (sin incluir cost_center_id que no existe allí)
-    const updatePayload = {
+    const updatePayload: any = {
         timestamp,
         type,
         marking_zone_id: marking_zone_id,
         lat: lat,
         lng: lng,
         status,
-        is_valid_zone: isValidZone
+        is_valid_zone: isValidZone,
+        schedule_id: scheduleId // Asegurar que el marcaje quede vinculado al nuevo schedule
     };
 
     await this.repository.updateActivityLogEntry(id, updatePayload);
