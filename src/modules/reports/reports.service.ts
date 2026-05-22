@@ -325,6 +325,8 @@ export class ReportsService {
 
     const markingZoneId = data.marking_zone_id || r.marking_zone_id;
     
+    const finalLat = data.lat !== undefined ? data.lat : r.lat;
+    const finalLng = data.lng !== undefined ? data.lng : r.lng;
     let type = r.type;
     let status = 'OnTime';
     let isValidZone = r.is_valid_zone;
@@ -442,8 +444,10 @@ export class ReportsService {
       isValidZone, 
       lat: finalLat, 
       lng: finalLng, 
-      cost_center_id: suggestedCostCenter, 
-      marking_zone_id: suggestedMarkingZone 
+      cost_center_id: suggestedCostCenter,
+      marking_zone_id: suggestedMarkingZone,
+      shift_id: shift?.id,
+      shift_name: shift?.name
     };
   }
 
@@ -454,7 +458,8 @@ export class ReportsService {
         type: analysis.type,
         is_valid_zone: analysis.isValidZone,
         has_existing_schedule: analysis.hasExistingSchedule,
-        suggested_shift_id: analysis.hasExistingSchedule ? (analysis as any).shift_id : null,
+        suggested_shift_id: (analysis as any).shift_id || null,
+        suggested_shift_name: (analysis as any).shift_name || null,
         suggested_cost_center_id: analysis.cost_center_id,
         suggested_marking_zone_id: analysis.marking_zone_id
     };
