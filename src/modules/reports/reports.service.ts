@@ -275,13 +275,23 @@ export class ReportsService {
   }
 
   async getAttendanceControl(companyId: string, date: string) {
-    const rawData = await this.repository.getAttendanceControlData(companyId, date);
-    const groups = new Map();
+    const [rawData, novelties]: any = await Promise.all([
+      this.repository.getAttendanceControlData(companyId, date),
+      pool.query(
+        `SELECT n.*, nt.name as novelty_type_name, nt.prefix as novelty_prefix 
+         FROM novelties n
+         JOIN novelty_types nt ON n.novelty_type_id = nt.id
+         WHERE n.company_id = ? AND n.status = 'Approved'
+         AND DATE(?) BETWEEN DATE(n.start_date) AND COALESCE(DATE(n.end_date), DATE(n.start_date))`,
+        [companyId, date]
+      )
+    ]);
 
+    const groups = new Map();
     rawData.forEach((row: any) => {
-      if (!groups.has(row.schedule_id)) {
-        groups.set(row.schedule_id, {
-          schedule_id: row.schedule_id,
+      if (!groups.has(row.collaborator_id)) {
+        groups.set(row.collaborator_id, {
+          schedule_id: row.schedule_id || null,
           collaborator: {
             id: row.collaborator_id,
             name: `${row.first_name} ${row.last_name}`,
@@ -290,19 +300,21 @@ export class ReportsService {
             email: row.email
           },
           shift: {
-            name: row.shift_name,
-            type: row.shift_type,
+            name: row.shift_name || 'Sin Turno',
+            type: row.shift_type || 'N/A',
             start_time: row.start_time,
             end_time: row.end_time,
             start_time_2: row.start_time_2,
-            end_time_2: row.end_time_2
+            end_time_2: row.end_time_2,
+            lunch_start: row.lunch_start,
+            lunch_end: row.lunch_end
           },
           cost_center: row.cost_center_name,
           markings: []
         });
       }
       if (row.marking_id) {
-        groups.get(row.schedule_id).markings.push({
+        groups.get(row.collaborator_id).markings.push({
           id: row.marking_id,
           timestamp: row.marking_timestamp,
           type: row.marking_type,
@@ -313,21 +325,32 @@ export class ReportsService {
     });
 
     return Array.from(groups.values()).map(g => {
-      const isPartido = g.shift.type === 'Partido';
-      const markingsIn = g.markings.filter((m: any) => m.type === 'IN');
-      const markingsOut = g.markings.filter((m: any) => m.type === 'OUT');
+      const isPartido = g.shift?.type === 'Partido';
+      const markingsIn = g.markings.filter((m: any) => m.type === 'IN').sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      const markingsOut = g.markings.filter((m: any) => m.type === 'OUT').sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
       const in1 = markingsIn[0] || null;
       const out1 = isPartido ? (markingsOut.length > 1 ? markingsOut[0] : null) : (markingsOut[markingsOut.length - 1] || null);
       const in2 = isPartido ? (markingsIn.length > 1 ? markingsIn[markingsIn.length - 1] : null) : null;
       const out2 = isPartido ? (markingsOut[markingsOut.length - 1] || null) : null;
 
+      // Cálculo de horas trabajadas
+      let worked_ms = 0;
+      if (in1 && out1) worked_ms += new Date(out1.timestamp).getTime() - new Date(in1.timestamp).getTime();
+      if (in2 && out2) worked_ms += new Date(out2.timestamp).getTime() - new Date(in2.timestamp).getTime();
+      const worked_hours = worked_ms > 0 ? (worked_ms / (1000 * 60 * 60)).toFixed(2) : "0.00";
+
+      // Vincular novedades
+      const collabNovelties = (novelties[0] || []).filter((n: any) => n.collaborator_id === g.collaborator.id);
+
       let general_status = 'Inasistencia';
+      if (!g.schedule_id) {
+        general_status = collabNovelties.length > 0 ? 'Observaciones' : 'Libre / Sin Turno';
+      } else {
       const required = isPartido ? 4 : 2;
       const present = [in1, out1, in2, out2].filter(Boolean).length;
-
       if (present === 0) {
-        general_status = 'Inasistencia';
+          general_status = collabNovelties.length > 0 ? 'Cumplido (Novedad)' : 'Inasistencia';
       } else if (present < required) {
         general_status = 'Incompleto';
       } else {
@@ -336,8 +359,9 @@ export class ReportsService {
         );
         general_status = hasBadStatus ? 'Observaciones' : 'Cumplido';
       }
+      }
 
-      return { ...g, in1, out1, in2, out2, general_status };
+      return { ...g, in1, out1, in2, out2, worked_hours, novelties: collabNovelties, general_status };
     });
   }
 
