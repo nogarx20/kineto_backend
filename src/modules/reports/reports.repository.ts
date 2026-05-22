@@ -259,4 +259,43 @@ export class ReportsRepository {
   async updateActivityLogEntry(id: string, data: any) {
     await pool.query('UPDATE attendance_records SET ? WHERE id = ?', [data, id]);
   }
+
+  async getAttendanceControlData(companyId: string, date: string) {
+    const sql = `
+      SELECT 
+        s.id as schedule_id,
+        s.date,
+        c.id as collaborator_id,
+        c.first_name,
+        c.last_name,
+        c.identification,
+        c.email,
+        c.photo,
+        sh.name as shift_name,
+        sh.shift_type,
+        sh.start_time,
+        sh.end_time,
+        sh.start_time_2,
+        sh.end_time_2,
+        cc.name as cost_center_name,
+        a.id as marking_id,
+        a.timestamp as marking_timestamp,
+        a.type as marking_type,
+        a.status as marking_status,
+        a.biometric_method
+      FROM schedules s
+      INNER JOIN collaborators c ON s.collaborator_id = c.id
+      INNER JOIN shifts sh ON s.shift_id = sh.id
+      LEFT JOIN cost_centers cc ON s.cost_center_id = cc.id
+      LEFT JOIN attendance_records a ON a.schedule_id = s.id AND a.onDelete = 0 
+        AND a.status IN ('OnTime', 'EarlyEntry', 'LateEntry', 'EarlyDeparture', 'LateDeparture')
+      WHERE s.company_id = ? 
+        AND DATE(s.date) = DATE(?) 
+        AND s.onDelete = 0
+        AND sh.shift_type <> 'Descanso'
+      ORDER BY c.last_name, c.first_name, a.timestamp ASC
+    `;
+    const [rows]: any = await pool.query(sql, [companyId, date]);
+    return rows;
+  }
 }
