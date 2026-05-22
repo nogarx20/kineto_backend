@@ -54,4 +54,15 @@ export class ReportsController {
       (res as any).status(500).json({ error: err.message });
     }
   }
+
+  async validateActivityLogEntry(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const { id } = req.params;
+      const result = await service.validateActivityLogEntry(user.company_id, id as string, req.body);
+      (res as any).json(result);
+    } catch (err: any) {
+      (res as any).status(500).json({ error: err.message });
+    }
+  }
 }
