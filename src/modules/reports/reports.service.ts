@@ -387,28 +387,41 @@ export class ReportsService {
     }
 
     // Helper function to calculate geofence validity
-    const calculateGeofenceValidity = async (zoneId: string | null, lat: number, lng: number) => {
-        if (!zoneId || isNaN(lat) || isNaN(lng) || lat === 0) {
+    const calculateGeofenceValidity = async (zoneId: string | null, lat: number, lng: number, companyId: string) => {
+        // Si no hay ID de zona, o las coordenadas son inválidas/cero, se considera fuera de geocerca.
+        if (!zoneId || isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) {
             return { isValid: 0, status: 'WrongGeofence' };
         }
-        const [zoneRows]: any = await pool.query('SELECT lat, lng, radius, zone_type, bounds FROM marking_zones WHERE id = ?', [zoneId]);
+        const [zoneRows]: any = await pool.query('SELECT lat, lng, radius, zone_type, bounds FROM marking_zones WHERE id = ? AND company_id = ? AND onDelete = 0 AND is_active = 1', [zoneId, companyId]);
         if (zoneRows[0]) {
             const zone = zoneRows[0];
             let inside = false;
             if (zone.zone_type === 'circle' || !zone.zone_type) {
-                const dist = this.calculateDistance(lat, lng, Number(zone.lat || 0), Number(zone.lng || 0));
-                inside = dist <= Number(zone.radius);
+                const zoneLat = Number(zone.lat || 0);
+                const zoneLng = Number(zone.lng || 0);
+                const zoneRadius = Number(zone.radius || 0);
+
+                if (zoneLat === 0 && zoneLng === 0 && zoneRadius === 0) { // Datos de zona inválidos
+                    return { isValid: 0, status: 'WrongGeofence' };
+                }
+
+                const dist = this.calculateDistance(lat, lng, zoneLat, zoneLng);
+                inside = dist <= zoneRadius;
             } else {
                 const bounds = typeof zone.bounds === 'string' ? JSON.parse(zone.bounds) : zone.bounds;
-                inside = (lat >= bounds.south && lat <= bounds.north && lng >= bounds.west && lng <= bounds.east);
+                if (!bounds || isNaN(Number(bounds.south)) || isNaN(Number(bounds.north)) || isNaN(Number(bounds.west)) || isNaN(Number(bounds.east))) {
+                    return { isValid: 0, status: 'WrongGeofence' }; // Datos de límites inválidos
+                }
+                inside = (lat >= Number(bounds.south) && lat <= Number(bounds.north) && lng >= Number(bounds.west) && lng <= Number(bounds.east));
             }
             return { isValid: inside ? 1 : 0, status: inside ? 'OnTime' : 'WrongGeofence' };
         }
-        return { isValid: 0, status: 'WrongGeofence' }; // Zone ID provided but not found
+        // Si el ID de zona fue proporcionado pero no se encontró en la base de datos (o está inactivo/borrado)
+        return { isValid: 0, status: 'WrongGeofence' }; 
     };
 
     // 4. Validar Geocerca (Ubicación relativa a la zona seleccionada)
-    const geofenceResult = await calculateGeofenceValidity(markingZoneId, finalLat, finalLng);
+    const geofenceResult = await calculateGeofenceValidity(markingZoneId, finalLat, finalLng, companyId);
     isValidZone = geofenceResult.isValid;
 
     // Si el estado actual NO es NoTurn, entonces la geocerca puede cambiar el estado
