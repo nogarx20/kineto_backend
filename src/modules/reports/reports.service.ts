@@ -282,55 +282,99 @@ export class ReportsService {
     if (!record || record.length === 0) throw new Error('Registro no encontrado');
     const r = record[0];
 
-    // 2. Obtener datos del turno para recalcular
-    const shiftId = data.shift_id || r.shift_id;
-    const [shiftRows]: any = await pool.query('SELECT * FROM shifts WHERE id = ?', [shiftId]);
+    // 2. Obtener datos del turno vinculado al horario programado
+    const [shiftRows]: any = await pool.query(
+      `SELECT sh.* FROM shifts sh 
+       JOIN schedules sd ON sd.shift_id = sh.id 
+       WHERE sd.id = ?`, 
+      [r.schedule_id]
+    );
     const shift = shiftRows[0];
-
+    
     const timestamp = data.timestamp || r.timestamp;
     const markingZoneId = data.marking_zone_id || r.marking_zone_id;
     
-    // 3. Lógica de Recálculo de Estado
+    // 3. Lógica de Recálculo de Tipo y Estado (Idéntica al motor de marcaje)
+    let type = r.type;
     let status = 'OnTime';
     let isValidZone = r.is_valid_zone;
 
-    if (shift) {
-      const markingDate = new Date(timestamp);
-      const [sh, sm] = shift.start_time.split(':').map(Number);
-      const shiftStart = new Date(markingDate);
-      shiftStart.setHours(sh, sm, 0, 0);
+    if (shift && shift.shift_type !== 'Descanso') {
+      // Normalizar timestamp para comparaciones seguras en zona horaria Colombia
+      const tsStr = typeof timestamp === 'string' ? timestamp : timestamp.toISOString().replace('T', ' ').substring(0, 19);
+      const datePart = tsStr.split(' ')[0];
+      const timePart = tsStr.split(' ')[1].substring(0, 5);
+      const markingDate = new Date(`${datePart}T${timePart}:00-05:00`);
 
-      const [eh, em] = shift.end_time.split(':').map(Number);
-      const shiftEnd = new Date(markingDate);
-      shiftEnd.setHours(eh, em, 0, 0);
-      if (shiftEnd < shiftStart) shiftEnd.setDate(shiftEnd.getDate() + 1);
+      const checkWindow = (targetTime: string, before: number, after: number, dayOffset = 0) => {
+        if (!targetTime) return null;
+        const [h, m] = targetTime.split(':').map(Number);
+        const target = new Date(`${datePart}T${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:00-05:00`);
+        if (dayOffset) target.setDate(target.getDate() + dayOffset);
+        const startLimit = new Date(target.getTime() - (before * 60000));
+        const endLimit = new Date(target.getTime() + (after * 60000));
+        return { inWindow: markingDate >= startLimit && markingDate <= endLimit, target };
+      };
 
-      if (r.type === 'IN') {
-        const diff = (markingDate.getTime() - shiftStart.getTime()) / 60000;
-        status = diff > (shift.entry_start_buffer || 0) ? 'LateEntry' : 'OnTime';
+      // Evaluar ventanas de tiempo
+      const winIn1 = checkWindow(shift.start_time, shift.entry_start_buffer || 0, shift.entry_end_buffer || 0);
+      const isOut1Rollover = shift.end_time < shift.start_time ? 1 : 0;
+      const winOut1 = checkWindow(shift.end_time, shift.exit_start_buffer || 0, shift.exit_end_buffer || 0, isOut1Rollover);
+
+      if (winIn1?.inWindow) {
+        type = 'IN';
+        status = markingDate > winIn1.target ? 'LateEntry' : 'OnTime';
+      } else if (winOut1?.inWindow) {
+        type = 'OUT';
+        status = markingDate < winOut1.target ? 'EarlyDeparture' : 'OnTime';
+      } else if (shift.shift_type === 'Partido') {
+        const winIn2 = checkWindow(shift.start_time_2, shift.entry_start_buffer || 0, shift.entry_end_buffer || 0);
+        const winOut2 = checkWindow(shift.end_time_2, shift.exit_start_buffer || 0, shift.exit_end_buffer || 0);
+        if (winIn2?.inWindow) {
+          type = 'IN';
+          status = markingDate > winIn2.target ? 'LateEntry' : 'OnTime';
+        } else if (winOut2?.inWindow) {
+          type = 'OUT';
+          status = markingDate < winOut2.target ? 'EarlyDeparture' : 'OnTime';
+        } else {
+          type = 'N/A';
+          status = 'NoTurn';
+        }
       } else {
-        const diff = (shiftEnd.getTime() - markingDate.getTime()) / 60000;
-        status = diff > (shift.exit_end_buffer || 0) ? 'EarlyDeparture' : 'OnTime';
+        type = 'N/A';
+        status = 'NoTurn';
       }
     }
 
-    // Validar Geocerca si se cambió o si existen coordenadas
-    if (markingZoneId && r.lat && r.lng) {
-      const [zoneRows]: any = await pool.query('SELECT lat, lng, radius FROM marking_zones WHERE id = ?', [markingZoneId]);
+    // 4. Validar Geocerca (Ubicación relativa a la zona seleccionada)
+    const finalLat = Number(data.lat !== undefined ? data.lat : r.lat);
+    const finalLng = Number(data.lng !== undefined ? data.lng : r.lng);
+
+    if (markingZoneId && !isNaN(finalLat) && !isNaN(finalLng) && finalLat !== 0) {
+      const [zoneRows]: any = await pool.query('SELECT lat, lng, radius, zone_type, bounds FROM marking_zones WHERE id = ?', [markingZoneId]);
       if (zoneRows[0]) {
         const zone = zoneRows[0];
-        const dist = this.calculateDistance(r.lat, r.lng, zone.lat, zone.lng);
-        isValidZone = dist <= zone.radius ? 1 : 0;
-        if (!isValidZone) status = 'WrongGeofence';
+        let inside = false;
+        if (zone.zone_type === 'circle' || !zone.zone_type) {
+          const dist = this.calculateDistance(finalLat, finalLng, Number(zone.lat || 0), Number(zone.lng || 0));
+          inside = dist <= Number(zone.radius);
+        } else {
+          const bounds = typeof zone.bounds === 'string' ? JSON.parse(zone.bounds) : zone.bounds;
+          inside = (finalLat >= bounds.south && finalLat <= bounds.north && finalLng >= bounds.west && finalLng <= bounds.east);
+        }
+        isValidZone = inside ? 1 : 0;
+        if (!inside) status = 'WrongGeofence';
       }
     }
 
-    // 4. Actualizar en base de datos
+    // 5. Persistencia de cambios y auditoría
     await this.repository.updateActivityLogEntry(id, {
       timestamp,
-      shift_id: shiftId,
+      type,
       cost_center_id: data.cost_center_id || r.cost_center_id,
       marking_zone_id: markingZoneId,
+      lat: data.lat !== undefined ? data.lat : r.lat,
+      lng: data.lng !== undefined ? data.lng : r.lng,
       status,
       is_valid_zone: isValidZone
     });
