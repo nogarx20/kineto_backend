@@ -279,7 +279,7 @@ export class ReportsService {
    */
   private async calculateMarkingAnalysis(companyId: string, id: string, data: any) {
     const [record]: any = await pool.query(
-      'SELECT r.*, c.id as collaborator_id FROM attendance_records r JOIN collaborators c ON r.collaborator_id = c.id WHERE r.id = ? AND r.company_id = ?',
+      'SELECT r.*, c.id as collaborator_id, c.first_name, c.last_name, c.email, c.identification, c.photo FROM attendance_records r JOIN collaborators c ON r.collaborator_id = c.id WHERE r.id = ? AND r.company_id = ?',
       [id, companyId]
     );
     if (!record || record.length === 0) throw new Error('Registro no encontrado');
@@ -297,7 +297,7 @@ export class ReportsService {
     let hasExistingSchedule = false;
 
     if (data.shift_id) {
-        const [rows]: any = await pool.query('SELECT * FROM shifts WHERE id = ? AND company_id = ?', [data.shift_id, companyId]);
+        const [rows]: any = await pool.query('SELECT sh.*, mz.lat as zone_lat, mz.lng as zone_lng, mz.radius as zone_radius, mz.zone_type as zone_type, mz.bounds as zone_bounds FROM shifts sh LEFT JOIN marking_zones mz ON sh.marking_zone_id = mz.id WHERE sh.id = ? AND sh.company_id = ?', [data.shift_id, companyId]);
         shift = rows[0];
     } else {
         // 1. Intentar por schedule_id vinculado
@@ -305,7 +305,7 @@ export class ReportsService {
           `SELECT sh.* FROM shifts sh
            JOIN schedules sd ON sd.shift_id = sh.id
            WHERE sd.id = ?`,
-          [r.schedule_id]
+          [r.schedule_id] // This schedule_id comes from attendance_records
         );
         
         if (shiftRows[0]) {
@@ -313,7 +313,7 @@ export class ReportsService {
         } else {
             // 2. Si no tiene vínculo, buscar si ya existe una programación activa para ese colaborador/fecha
             const [activeSched]: any = await pool.query(
-                'SELECT sh.*, sd.id as schedule_id FROM shifts sh JOIN schedules sd ON sd.shift_id = sh.id WHERE sd.collaborator_id = ? AND DATE(sd.date) = DATE(?) AND sd.company_id = ? AND sd.onDelete = 0 LIMIT 1',
+                'SELECT sh.*, sd.id as schedule_id, mz.lat as zone_lat, mz.lng as zone_lng, mz.radius as zone_radius, mz.zone_type as zone_type, mz.bounds as zone_bounds FROM shifts sh JOIN schedules sd ON sd.shift_id = sh.id LEFT JOIN marking_zones mz ON sd.marking_zone_id = mz.id WHERE sd.collaborator_id = ? AND DATE(sd.date) = DATE(?) AND sd.company_id = ? AND sd.onDelete = 0 LIMIT 1',
                 [collaboratorId, datePart, companyId]
             );
             if (activeSched[0]) {
@@ -332,7 +332,7 @@ export class ReportsService {
     if (shift && shift.shift_type !== 'Descanso') {
       // Normalizar timestamp para comparaciones seguras en zona horaria Colombia
       const tsStr = typeof timestamp === 'string' ? timestamp : timestamp.toISOString().replace('T', ' ').substring(0, 19);
-      const datePart = tsStr.split(' ')[0];
+      // datePart is already defined
       const timePart = tsStr.split(' ')[1].substring(0, 5);
       const markingDate = new Date(`${datePart}T${timePart}:00-05:00`);
 
@@ -379,38 +379,42 @@ export class ReportsService {
         status = 'NoTurn';
         type = r.type || 'N/A';
       }
-    } else {
-      // Si no hay turno programado
+    } else { // No shift or shift_type is 'Descanso'
       status = 'NoTurn';
       type = r.type || 'N/A';
     }
 
-    // 4. Validar Geocerca (Ubicación relativa a la zona seleccionada)
-    const finalLat = Number(data.lat !== undefined ? data.lat : r.lat);
-    const finalLng = Number(data.lng !== undefined ? data.lng : r.lng);
-
-    if (markingZoneId && !isNaN(finalLat) && !isNaN(finalLng) && finalLat !== 0) {
-      const [zoneRows]: any = await pool.query('SELECT lat, lng, radius, zone_type, bounds FROM marking_zones WHERE id = ?', [markingZoneId]);
-      if (zoneRows[0]) {
-        const zone = zoneRows[0];
-        let inside = false;
-        if (zone.zone_type === 'circle' || !zone.zone_type) {
-          const dist = this.calculateDistance(finalLat, finalLng, Number(zone.lat || 0), Number(zone.lng || 0));
-          inside = dist <= Number(zone.radius);
-        } else {
-          const bounds = typeof zone.bounds === 'string' ? JSON.parse(zone.bounds) : zone.bounds;
-          inside = (finalLat >= bounds.south && finalLat <= bounds.north && finalLng >= bounds.west && finalLng <= bounds.east);
+    // Helper function to calculate geofence validity
+    const calculateGeofenceValidity = async (zoneId: string | null, lat: number, lng: number) => {
+        if (!zoneId || isNaN(lat) || isNaN(lng) || lat === 0) {
+            return { isValid: 0, status: 'WrongGeofence' };
         }
-        isValidZone = inside ? 1 : 0;
-        if (!inside) status = 'WrongGeofence';
-      } else {
-        isValidZone = 0;
+        const [zoneRows]: any = await pool.query('SELECT lat, lng, radius, zone_type, bounds FROM marking_zones WHERE id = ?', [zoneId]);
+        if (zoneRows[0]) {
+            const zone = zoneRows[0];
+            let inside = false;
+            if (zone.zone_type === 'circle' || !zone.zone_type) {
+                const dist = this.calculateDistance(lat, lng, Number(zone.lat || 0), Number(zone.lng || 0));
+                inside = dist <= Number(zone.radius);
+            } else {
+                const bounds = typeof zone.bounds === 'string' ? JSON.parse(zone.bounds) : zone.bounds;
+                inside = (lat >= bounds.south && lat <= bounds.north && lng >= bounds.west && lng <= bounds.east);
+            }
+            return { isValid: inside ? 1 : 0, status: inside ? 'OnTime' : 'WrongGeofence' };
+        }
+        return { isValid: 0, status: 'WrongGeofence' }; // Zone ID provided but not found
+    };
+
+    // 4. Validar Geocerca (Ubicación relativa a la zona seleccionada)
+    const geofenceResult = await calculateGeofenceValidity(markingZoneId, finalLat, finalLng);
+    isValidZone = geofenceResult.isValid;
+
+    // Si el estado actual NO es NoTurn, entonces la geocerca puede cambiar el estado
+    // Esto asegura que NoTurn tenga prioridad sobre WrongGeofence
+    if (status !== 'NoTurn' && geofenceResult.status === 'WrongGeofence') {
         status = 'WrongGeofence';
-      }
-    } else {
-      isValidZone = 0;
-      status = 'WrongGeofence';
     }
+
 
     // 5. Si sigue sin turno o está en NoTurn, obtener sugerencias del contrato
     let suggestedCostCenter = r.cost_center_id;
