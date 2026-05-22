@@ -350,12 +350,12 @@ export class ReportsService {
           status = 'NoTurn';
         }
       } else {
-        // Si el turno asignado es "Descanso" o no existe
+        // Si el turno asignado es "Descanso"
         status = 'NoTurn';
         type = r.type || 'N/A';
       }
     } else {
-      // Si no hay objeto shift (fallo de base de datos o integridad)
+      // Si no hay turno programado
       status = 'NoTurn';
       type = r.type || 'N/A';
     }
@@ -381,14 +381,15 @@ export class ReportsService {
       }
     }
 
+    // Retornar análisis permitiendo overrides manuales si vienen en el body
     return { 
       timestamp, 
-      type, 
-      status, 
+      type: data.type || type, 
+      status: data.status || status, 
       isValidZone, 
       lat: finalLat, 
       lng: finalLng, 
-      cost_center_id: data.cost_center_id || r.cost_center_id, 
+      cost_center_id: data.cost_center_id !== undefined ? data.cost_center_id : r.cost_center_id, 
       marking_zone_id: markingZoneId 
     };
   }
@@ -408,7 +409,7 @@ export class ReportsService {
     const { timestamp, type, status, isValidZone, lat, lng, cost_center_id, marking_zone_id } = analysis as any;
 
     // 2. Obtener el registro para conocer el schedule_id
-    const [record]: any = await pool.query('SELECT schedule_id FROM attendance_records WHERE id = ?', [id]);
+    const [record]: any = await pool.query('SELECT schedule_id FROM attendance_records WHERE id = ? AND company_id = ?', [id, companyId]);
     const scheduleId = record[0]?.schedule_id;
 
     // 3. Si se proporcionó un cost_center_id, actualizar la tabla schedules
@@ -431,6 +432,22 @@ export class ReportsService {
     await this.repository.updateActivityLogEntry(id, updatePayload);
 
     return { id, status, isValidZone };
+  }
+
+  async deleteActivityLogEntry(companyId: string, id: string) {
+    // 1. Verificar existencia y pertenencia a la empresa
+    const [record]: any = await pool.query(
+      'SELECT id FROM attendance_records WHERE id = ? AND company_id = ?',
+      [id, companyId]
+    );
+    
+    if (!record || record.length === 0) {
+      throw new Error('El registro no existe o no pertenece a su organización');
+    }
+
+    // 2. Ejecutar borrado lógico (onDelete = 1)
+    await this.repository.updateActivityLogEntry(id, { onDelete: 1 });
+    return { success: true };
   }
 
   private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
