@@ -350,9 +350,12 @@ export class ReportsService {
           status = 'NoTurn';
         }
       } else {
-        type = 'N/A';
         status = 'NoTurn';
+        type = r.type || 'N/A';
       }
+    } else {
+      status = 'NoTurn';
+      type = r.type || 'N/A';
     }
 
     // 4. Validar Geocerca (Ubicación relativa a la zona seleccionada)
@@ -400,20 +403,30 @@ export class ReportsService {
   async updateActivityLogEntry(companyId: string, id: string, data: any) {
     // 1. Ejecutar análisis técnico
     const analysis = await this.calculateMarkingAnalysis(companyId, id, data);
-
     const { timestamp, type, status, isValidZone, lat, lng, cost_center_id, marking_zone_id } = analysis as any;
 
-    // 2. Persistencia de cambios
-    await this.repository.updateActivityLogEntry(id, {
-      timestamp,
-      type,
-      cost_center_id: cost_center_id,
-      marking_zone_id: marking_zone_id,
-      lat: lat,
-      lng: lng,
-      status,
-      is_valid_zone: isValidZone
-    });
+    // 2. Obtener el registro para conocer el schedule_id
+    const [record]: any = await pool.query('SELECT schedule_id FROM attendance_records WHERE id = ?', [id]);
+    const scheduleId = record[0]?.schedule_id;
+
+    // 3. Si se proporcionó un cost_center_id, actualizar la tabla schedules
+    if (scheduleId && cost_center_id) {
+        await pool.query('UPDATE schedules SET cost_center_id = ? WHERE id = ? AND company_id = ?', 
+            [cost_center_id, scheduleId, companyId]);
+    }
+
+    // 4. Persistencia de cambios en el registro de asistencia (sin incluir cost_center_id que no existe allí)
+    const updatePayload = {
+        timestamp,
+        type,
+        marking_zone_id: marking_zone_id,
+        lat: lat,
+        lng: lng,
+        status,
+        is_valid_zone: isValidZone
+    };
+
+    await this.repository.updateActivityLogEntry(id, updatePayload);
 
     return { id, status, isValidZone };
   }
