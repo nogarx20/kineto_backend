@@ -350,10 +350,12 @@ export class ReportsService {
           status = 'NoTurn';
         }
       } else {
+        // Si el turno asignado es "Descanso" o no existe
         status = 'NoTurn';
         type = r.type || 'N/A';
       }
     } else {
+      // Si no hay objeto shift (fallo de base de datos o integridad)
       status = 'NoTurn';
       type = r.type || 'N/A';
     }
