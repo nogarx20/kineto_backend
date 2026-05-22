@@ -65,4 +65,15 @@ export class ReportsController {
       (res as any).status(500).json({ error: err.message });
     }
   }
+
+  async deleteActivityLogEntry(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const { id } = req.params;
+      const result = await service.deleteActivityLogEntry(user.company_id, id as string);
+      (res as any).json(result);
+    } catch (err: any) {
+      (res as any).status(500).json({ error: err.message });
+    }
+  }
 }
