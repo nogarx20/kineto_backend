@@ -219,6 +219,8 @@ export class ReportsRepository {
       a.timestamp, 
       a.type, 
       a.status, 
+      a.lat,
+      a.lng,
       a.is_valid_zone,
       a.marking_zone_id,
       c.first_name, 
