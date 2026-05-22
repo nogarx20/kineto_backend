@@ -403,7 +403,13 @@ export class ReportsService {
         }
         isValidZone = inside ? 1 : 0;
         if (!inside) status = 'WrongGeofence';
+      } else {
+        isValidZone = 0;
+        status = 'WrongGeofence';
       }
+    } else {
+      isValidZone = 0;
+      status = 'WrongGeofence';
     }
 
     // 5. Si sigue sin turno o está en NoTurn, obtener sugerencias del contrato
