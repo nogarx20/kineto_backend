@@ -273,20 +273,21 @@ export class ReportsService {
     return await this.repository.getActivityLog(companyId, { ...params, offset });
   }
 
-  async updateActivityLogEntry(companyId: string, id: string, data: any) {
-    // 1. Obtener registro actual
+  /**
+   * Realiza el análisis técnico de un marcaje basado en reglas de negocio (Horarios, Geocercas, Tolerancias)
+   */
+  private async calculateMarkingAnalysis(companyId: string, id: string, data: any) {
     const [record]: any = await pool.query(
-      'SELECT * FROM attendance_records WHERE id = ? AND company_id = ?', 
+      'SELECT * FROM attendance_records WHERE id = ? AND company_id = ?',
       [id, companyId]
     );
     if (!record || record.length === 0) throw new Error('Registro no encontrado');
     const r = record[0];
 
-    // 2. Obtener datos del turno vinculado al horario programado
     const [shiftRows]: any = await pool.query(
-      `SELECT sh.* FROM shifts sh 
-       JOIN schedules sd ON sd.shift_id = sh.id 
-       WHERE sd.id = ?`, 
+      `SELECT sh.* FROM shifts sh
+       JOIN schedules sd ON sd.shift_id = sh.id
+       WHERE sd.id = ?`,
       [r.schedule_id]
     );
     const shift = shiftRows[0];
@@ -294,7 +295,6 @@ export class ReportsService {
     const timestamp = data.timestamp || r.timestamp;
     const markingZoneId = data.marking_zone_id || r.marking_zone_id;
     
-    // 3. Lógica de Recálculo de Tipo y Estado (Idéntica al motor de marcaje)
     let type = r.type;
     let status = 'OnTime';
     let isValidZone = r.is_valid_zone;
@@ -367,14 +367,41 @@ export class ReportsService {
       }
     }
 
-    // 5. Persistencia de cambios y auditoría
+    return { 
+      timestamp, 
+      type, 
+      status, 
+      isValidZone, 
+      lat: finalLat, 
+      lng: finalLng, 
+      cost_center_id: data.cost_center_id || r.cost_center_id, 
+      marking_zone_id: markingZoneId 
+    };
+  }
+
+  async validateActivityLogEntry(companyId: string, id: string, data: any) {
+    const analysis = await this.calculateMarkingAnalysis(companyId, id, data);
+    return {
+        status: analysis.status,
+        type: analysis.type,
+        is_valid_zone: analysis.isValidZone
+    };
+  }
+
+  async updateActivityLogEntry(companyId: string, id: string, data: any) {
+    // 1. Ejecutar análisis técnico
+    const analysis = await this.calculateMarkingAnalysis(companyId, id, data);
+
+    const { timestamp, type, status, isValidZone, lat, lng, cost_center_id, marking_zone_id } = analysis as any;
+
+    // 2. Persistencia de cambios
     await this.repository.updateActivityLogEntry(id, {
       timestamp,
       type,
-      cost_center_id: data.cost_center_id || r.cost_center_id,
-      marking_zone_id: markingZoneId,
-      lat: data.lat !== undefined ? data.lat : r.lat,
-      lng: data.lng !== undefined ? data.lng : r.lng,
+      cost_center_id: cost_center_id,
+      marking_zone_id: marking_zone_id,
+      lat: lat,
+      lng: lng,
       status,
       is_valid_zone: isValidZone
     });
