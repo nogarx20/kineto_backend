@@ -295,14 +295,17 @@ export class ReportsService {
 
     let shift;
     let hasExistingSchedule = false;
+    let scheduleMarkingZoneId = null; // To store marking_zone_id from schedule if found
 
     if (data.shift_id) {
-        const [rows]: any = await pool.query('SELECT sh.*, mz.lat as zone_lat, mz.lng as zone_lng, mz.radius as zone_radius, mz.zone_type as zone_type, mz.bounds as zone_bounds FROM shifts sh LEFT JOIN marking_zones mz ON sh.marking_zone_id = mz.id WHERE sh.id = ? AND sh.company_id = ?', [data.shift_id, companyId]);
+        // If data.shift_id is provided, fetch only shift details.
+        // The marking_zone_id for validation will come from data.marking_zone_id or the original record.
+        const [rows]: any = await pool.query('SELECT sh.* FROM shifts sh WHERE sh.id = ? AND sh.company_id = ?', [data.shift_id, companyId]);
         shift = rows[0];
     } else {
         // 1. Intentar por schedule_id vinculado
         const [shiftRows]: any = await pool.query(
-          `SELECT sh.* FROM shifts sh
+          `SELECT sh.*, sd.marking_zone_id FROM shifts sh
            JOIN schedules sd ON sd.shift_id = sh.id
            WHERE sd.id = ?`,
           [r.schedule_id] // This schedule_id comes from attendance_records
@@ -310,20 +313,24 @@ export class ReportsService {
         
         if (shiftRows[0]) {
             shift = shiftRows[0];
+            scheduleMarkingZoneId = shiftRows[0].marking_zone_id;
         } else {
             // 2. Si no tiene vínculo, buscar si ya existe una programación activa para ese colaborador/fecha
             const [activeSched]: any = await pool.query(
-                'SELECT sh.*, sd.id as schedule_id, mz.lat as zone_lat, mz.lng as zone_lng, mz.radius as zone_radius, mz.zone_type as zone_type, mz.bounds as zone_bounds FROM shifts sh JOIN schedules sd ON sd.shift_id = sh.id LEFT JOIN marking_zones mz ON sd.marking_zone_id = mz.id WHERE sd.collaborator_id = ? AND DATE(sd.date) = DATE(?) AND sd.company_id = ? AND sd.onDelete = 0 LIMIT 1',
+                'SELECT sh.*, sd.id as schedule_id, sd.marking_zone_id FROM shifts sh JOIN schedules sd ON sd.shift_id = sh.id WHERE sd.collaborator_id = ? AND DATE(sd.date) = DATE(?) AND sd.company_id = ? AND sd.onDelete = 0 LIMIT 1',
                 [collaboratorId, datePart, companyId]
             );
             if (activeSched[0]) {
                 shift = activeSched[0];
                 hasExistingSchedule = true;
+                scheduleMarkingZoneId = activeSched[0].marking_zone_id;
             }
         }
     }
 
-    const markingZoneId = data.marking_zone_id || r.marking_zone_id;
+    // Determine the markingZoneId to use for geofence validation
+    // Priority: data.marking_zone_id (user input) -> scheduleMarkingZoneId (from detected schedule) -> r.marking_zone_id (original record)
+    const markingZoneId = data.marking_zone_id || scheduleMarkingZoneId || r.marking_zone_id;
     
     const finalLat = data.lat !== undefined ? data.lat : r.lat;
     const finalLng = data.lng !== undefined ? data.lng : r.lng;
