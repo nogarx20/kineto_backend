@@ -301,6 +301,7 @@ export class ReportsService {
           },
           shift: {
             name: row.shift_name || 'Sin Turno',
+            prefix: row.shift_prefix || '?',
             type: row.shift_type || 'N/A',
             start_time: row.start_time,
             end_time: row.end_time,
@@ -334,14 +335,39 @@ export class ReportsService {
       const in2 = isPartido ? (markingsIn.length > 1 ? markingsIn[markingsIn.length - 1] : null) : null;
       const out2 = isPartido ? (markingsOut[markingsOut.length - 1] || null) : null;
 
-      // Cálculo de horas trabajadas
+      // --- CÁLCULO DE HORAS LABORADAS ---
       let worked_ms = 0;
       if (in1 && out1) worked_ms += new Date(out1.timestamp).getTime() - new Date(in1.timestamp).getTime();
       if (in2 && out2) worked_ms += new Date(out2.timestamp).getTime() - new Date(in2.timestamp).getTime();
-      const worked_hours = worked_ms > 0 ? (worked_ms / (1000 * 60 * 60)).toFixed(2) : "0.00";
+
+      // Calcular duración del almuerzo para restar
+      let lunch_ms = 0;
+      if (g.shift.lunch_start && g.shift.lunch_end) {
+        const [h1, m1] = g.shift.lunch_start.split(':').map(Number);
+        const [h2, m2] = g.shift.lunch_end.split(':').map(Number);
+        lunch_ms = ((h2 * 60 + m2) - (h1 * 60 + m1)) * 60000;
+        if (lunch_ms < 0) lunch_ms += 24 * 60 * 60000; // Cruce de medianoche
+      }
+
+      // Neto: (Marcajes) - Almuerzo (solo si hubo marcajes suficientes)
+      const net_ms = worked_ms > 0 ? Math.max(0, worked_ms - lunch_ms) : 0;
+      const worked_hours = (net_ms / (1000 * 60 * 60)).toFixed(2);
 
       // Vincular novedades
-      const collabNovelties = (novelties[0] || []).filter((n: any) => n.collaborator_id === g.collaborator.id);
+      const collabNovelties = (novelties[0] || []).filter((n: any) => n.collaborator_id === g.collaborator.id).map((n: any) => {
+        let hours = 0;
+        if (n.novelty_period === 'Hora') {
+          const [h1, m1] = n.start_time.split(':').map(Number);
+          const [h2, m2] = n.end_time.split(':').map(Number);
+          let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+          if (diff < 0) diff += 1440;
+          hours = diff / 60;
+        } else {
+          // Para días, se asume la jornada del turno o 8h defecto
+          hours = 8; 
+        }
+        return { ...n, applied_hours: hours.toFixed(2) };
+      });
 
       let general_status = 'Inasistencia';
       if (!g.schedule_id) {
