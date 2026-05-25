@@ -297,11 +297,13 @@ export class ReportsService {
             name: `${row.first_name} ${row.last_name}`,
             identification: row.identification,
             photo: row.photo,
-            email: row.email
+            email: row.email,
+            weekly_hours: row.weekly_hours,
+            working_days: row.working_days
           },
           shift: {
             name: row.shift_name || 'Sin Turno',
-            prefix: row.shift_prefix || '?',
+            shift_prefix: row.shift_prefix || '?',
             type: row.shift_type || 'N/A',
             start_time: row.start_time,
             end_time: row.end_time,
@@ -363,8 +365,10 @@ export class ReportsService {
           if (diff < 0) diff += 1440;
           hours = diff / 60;
         } else {
-          // Para días, se asume la jornada del turno o 8h defecto
-          hours = 8; 
+          // Para días, pactadas / dias habiles
+          const weeklyHours = parseFloat(g.collaborator.weekly_hours || 44);
+          const workingDaysCount = (g.collaborator.working_days || 'L,M,X,J,V,S').split(',').filter(Boolean).length || 6;
+          hours = weeklyHours / workingDaysCount;
         }
         return { ...n, applied_hours: hours.toFixed(2) };
       });
