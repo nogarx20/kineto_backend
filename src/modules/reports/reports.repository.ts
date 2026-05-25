@@ -292,8 +292,8 @@ export class ReportsRepository {
       INNER JOIN contracts ct ON c.id = ct.collaborator_id 
         AND ct.status = 'Activo' AND ct.onDelete = 0
         AND DATE(?) BETWEEN DATE(ct.start_date) AND COALESCE(DATE(ct.end_date), '9999-12-31')
-      LEFT JOIN schedules s ON s.collaborator_id = c.id AND DATE(s.date) = DATE(?) AND s.onDelete = 0
-      LEFT JOIN shifts sh ON s.shift_id = sh.id
+      INNER JOIN schedules s ON s.collaborator_id = c.id AND DATE(s.date) = DATE(?) AND s.onDelete = 0
+      INNER JOIN shifts sh ON s.shift_id = sh.id
       LEFT JOIN cost_centers cc ON s.cost_center_id = cc.id OR ct.cost_center_id = cc.id
       LEFT JOIN attendance_records a ON a.schedule_id = s.id AND a.onDelete = 0 
         AND a.status IN ('OnTime', 'EarlyEntry', 'LateEntry', 'EarlyDeparture', 'LateDeparture')
