@@ -281,7 +281,7 @@ export class ReportsService {
         `SELECT n.*, nt.name as novelty_type_name, nt.prefix as novelty_prefix, nt.period as novelty_period
          FROM novelties n
          JOIN novelty_types nt ON n.novelty_type_id = nt.id
-         WHERE n.company_id = ? AND n.status != 'Approved'
+         WHERE n.company_id = ? AND n.status = 'Approved'
          AND DATE(?) BETWEEN DATE(n.start_date) AND COALESCE(DATE(n.end_date), DATE(n.start_date)) and n.onDelete = 0`,
         [companyId, date]
       ),
