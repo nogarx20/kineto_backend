@@ -56,6 +56,18 @@ export class ReportsController {
     }
   }
 
+  async updateOvertimeStatus(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      const { id } = req.params;
+      const { status } = req.body;
+      await service.updateOvertimeStatus(user.company_id, id as string, status as string);
+      (res as any).json({ success: true });
+    } catch (err: any) {
+      (res as any).status(500).json({ error: err.message });
+    }
+  }
+
   async updateActivityLogEntry(req: Request, res: Response) {
     try {
       const user = (req as any).user;
