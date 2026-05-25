@@ -304,7 +304,8 @@ export class ReportsService {
             photo: row.photo,
             email: row.email,
             weekly_hours: row.weekly_hours,
-            working_days: row.working_days
+            working_days: row.working_days,
+            discount_lunch: row.discount_lunch
           },
           shift: {
             name: row.shift_name,
@@ -372,8 +373,11 @@ export class ReportsService {
         if (lunch_ms < 0) lunch_ms += 24 * 60 * 60000; // Cruce de medianoche
       }
 
+      const shouldDiscountLunch = g.collaborator.discount_lunch === 1 || g.collaborator.discount_lunch === true;
+
       // Neto: (Marcajes) - Almuerzo (solo si hubo marcajes suficientes)
-      const net_ms = worked_ms > 0 ? Math.max(0, worked_ms - lunch_ms) : 0;
+      const actualLunchDeductionMs = shouldDiscountLunch ? lunch_ms : 0;
+      const net_ms = worked_ms > 0 ? Math.max(0, worked_ms - actualLunchDeductionMs) : 0;
       const worked_hours = (net_ms / (1000 * 60 * 60)).toFixed(2);
 
       // --- CÁLCULO DE HORAS PLANIFICADAS DEL TURNO ---
@@ -391,7 +395,7 @@ export class ReportsService {
         plannedHours += getDuration(g.shift.start_time, g.shift.end_time);
         if (g.shift.type === 'Partido' && g.shift.start_time_2 && g.shift.end_time_2) {
           plannedHours += getDuration(g.shift.start_time_2, g.shift.end_time_2);
-        } else if (g.shift.type === 'Simple' && g.shift.lunch_start && g.shift.lunch_end) {
+        } else if (shouldDiscountLunch && g.shift.type === 'Simple' && g.shift.lunch_start && g.shift.lunch_end) {
           plannedHours -= getDuration(g.shift.lunch_start, g.shift.lunch_end);
         }
       }
@@ -399,11 +403,31 @@ export class ReportsService {
       const collabNovelties = novelties.filter((n: any) => n.collaborator_id === g.collaborator.id).map((n: any) => {
         let hours = 0;
         if (n.novelty_period === 'Hora') {
-          const [h1, m1] = n.start_time.split(':').map(Number);
-          const [h2, m2] = n.end_time.split(':').map(Number);
-          let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
-          if (diff < 0) diff += 1440;
-          hours = diff / 60;
+          const toMin = (t: string) => {
+            const [h, m] = t.split(':').map(Number);
+            return h * 60 + m;
+          };
+
+          const nStart = toMin(n.start_time);
+          let nEnd = toMin(n.end_time);
+          if (nEnd < nStart) nEnd += 1440;
+
+          let noveltyMinutes = nEnd - nStart;
+
+          // Descontar traslape con el almuerzo si aplica (solo en turnos Simples)
+          if (shouldDiscountLunch && g.shift?.type === 'Simple' && g.shift.lunch_start && g.shift.lunch_end) {
+            const lStart = toMin(g.shift.lunch_start);
+            let lEnd = toMin(g.shift.lunch_end);
+            if (lEnd < lStart) lEnd += 1440;
+
+            const overlapStart = Math.max(nStart, lStart);
+            const overlapEnd = Math.min(nEnd, lEnd);
+
+            if (overlapStart < overlapEnd) {
+              noveltyMinutes -= (overlapEnd - overlapStart);
+            }
+          }
+          hours = Math.max(0, noveltyMinutes) / 60;
         } else {
           hours = plannedHours;
         }
