@@ -27,7 +27,7 @@ export class NoveltyService {
       ...data,
       id,
       company_id: companyId,
-      status: 'Pending'
+      status: data.status || 'Pending'
     };
     await this.repository.create(newNovelty);
     return id;
