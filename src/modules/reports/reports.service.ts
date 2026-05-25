@@ -302,9 +302,9 @@ export class ReportsService {
             working_days: row.working_days
           },
           shift: {
-            name: row.shift_name || 'Sin Turno',
-            shift_prefix: row.shift_prefix || '?',
-            type: row.shift_type || 'N/A',
+              name: row.shift_name || 'Sin Turno', // Se mantiene el fallback 'Sin Turno' si no hay nombre de turno
+              shift_prefix: row.shift_name ? (row.shift_prefix || '') : '?', // Si hay nombre de turno, usa el prefijo (o vacío si es null), si no, '?'
+              type: row.shift_name ? (row.shift_type || '') : 'N/A',         // Si hay nombre de turno, usa el tipo (o vacío si es null), si no, 'N/A'
             start_time: row.start_time,
             end_time: row.end_time,
             start_time_2: row.start_time_2,
