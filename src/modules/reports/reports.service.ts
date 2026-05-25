@@ -275,17 +275,22 @@ export class ReportsService {
   }
 
   async getAttendanceControl(companyId: string, date: string) {
-    const [rawData, novelties]: any = await Promise.all([
+    const [rawData, noveltiesResult, companyResult]: any = await Promise.all([
       this.repository.getAttendanceControlData(companyId, date),
       pool.query(
         `SELECT n.*, nt.name as novelty_type_name, nt.prefix as novelty_prefix, nt.period as novelty_period
          FROM novelties n
          JOIN novelty_types nt ON n.novelty_type_id = nt.id
          WHERE n.company_id = ? AND n.status = 'Approved'
-         AND DATE(?) BETWEEN DATE(n.start_date) AND COALESCE(DATE(n.end_date), DATE(n.start_date))`,
+         AND DATE(?) BETWEEN DATE(n.start_date) AND COALESCE(DATE(n.end_date), DATE(n.start_date)) and Ondelete = 0`,
         [companyId, date]
-      )
+      ),
+      pool.query('SELECT settings FROM companies WHERE id = ?', [companyId])
     ]);
+
+    const novelties = noveltiesResult[0] || [];
+    const companySettings = typeof companyResult[0][0]?.settings === 'string' ? JSON.parse(companyResult[0][0].settings) : (companyResult[0][0]?.settings || {});
+    const roundingMinutes = parseInt(companySettings.roundingMinutes) || 0;
 
     const groups = new Map();
     rawData.forEach((row: any) => {
@@ -337,10 +342,26 @@ export class ReportsService {
       const in2 = isPartido ? (markingsIn.length > 1 ? markingsIn[markingsIn.length - 1] : null) : null;
       const out2 = isPartido ? (markingsOut[markingsOut.length - 1] || null) : null;
 
+      const getRoundedTime = (ts: any) => {
+        if (!ts) return 0;
+        let cleanStr = String(ts);
+        if (cleanStr.includes(' ') && !cleanStr.includes('T')) {
+          cleanStr = cleanStr.replace(' ', 'T');
+        }
+        if (!cleanStr.includes('Z') && !cleanStr.includes('+')) {
+          cleanStr += 'Z';
+        }
+        const d = new Date(cleanStr);
+        if (isNaN(d.getTime())) return 0;
+        if (roundingMinutes <= 0) return d.getTime();
+        const ms = 1000 * 60 * roundingMinutes;
+        return Math.round(d.getTime() / ms) * ms;
+      };
+
       // --- CÁLCULO DE HORAS LABORADAS ---
       let worked_ms = 0;
-      if (in1 && out1) worked_ms += new Date(out1.timestamp).getTime() - new Date(in1.timestamp).getTime();
-      if (in2 && out2) worked_ms += new Date(out2.timestamp).getTime() - new Date(in2.timestamp).getTime();
+      if (in1 && out1) worked_ms += getRoundedTime(out1.timestamp) - getRoundedTime(in1.timestamp);
+      if (in2 && out2) worked_ms += getRoundedTime(out2.timestamp) - getRoundedTime(in2.timestamp);
 
       // Calcular duración del almuerzo para restar
       let lunch_ms = 0;
