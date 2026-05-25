@@ -278,7 +278,7 @@ export class ReportsService {
     const [rawData, novelties]: any = await Promise.all([
       this.repository.getAttendanceControlData(companyId, date),
       pool.query(
-        `SELECT n.*, nt.name as novelty_type_name, nt.prefix as novelty_prefix 
+        `SELECT n.*, nt.name as novelty_type_name, nt.prefix as novelty_prefix, nt.period as novelty_period
          FROM novelties n
          JOIN novelty_types nt ON n.novelty_type_id = nt.id
          WHERE n.company_id = ? AND n.status = 'Approved'
@@ -393,8 +393,12 @@ export class ReportsService {
         return { ...n, applied_hours: hours.toFixed(2) };
       });
 
+      const hasDayNov = collabNovelties.some((n: any) => n.novelty_period === 'Día');
+
       let general_status = 'Inasistencia';
-      if (!g.schedule_id) {
+      if (hasDayNov) {
+        general_status = 'Novedad';
+      } else if (!g.schedule_id) {
         general_status = collabNovelties.length > 0 ? 'Observaciones' : 'Libre / Sin Turno';
       } else {
       const required = isPartido ? 4 : 2;
