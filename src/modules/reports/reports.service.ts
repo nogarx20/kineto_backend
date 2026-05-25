@@ -376,8 +376,7 @@ export class ReportsService {
       const net_ms = worked_ms > 0 ? Math.max(0, worked_ms - lunch_ms) : 0;
       const worked_hours = (net_ms / (1000 * 60 * 60)).toFixed(2);
 
-      // Vincular novedades
-      const collabNovelties = (novelties[0] || []).filter((n: any) => n.collaborator_id === g.collaborator.id).map((n: any) => {
+      const collabNovelties = novelties.filter((n: any) => n.collaborator_id === g.collaborator.id).map((n: any) => {
         let hours = 0;
         if (n.novelty_period === 'Hora') {
           const [h1, m1] = n.start_time.split(':').map(Number);
