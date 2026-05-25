@@ -282,7 +282,7 @@ export class ReportsService {
          FROM novelties n
          JOIN novelty_types nt ON n.novelty_type_id = nt.id
          WHERE n.company_id = ? AND n.status = 'Approved'
-         AND DATE(?) BETWEEN DATE(n.start_date) AND COALESCE(DATE(n.end_date), DATE(n.start_date)) and Ondelete = 0`,
+         AND DATE(?) BETWEEN DATE(n.start_date) AND COALESCE(DATE(n.end_date), DATE(n.start_date)) and onDelete = 0`,
         [companyId, date]
       ),
       pool.query('SELECT settings FROM companies WHERE id = ?', [companyId])
