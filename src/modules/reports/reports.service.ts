@@ -303,14 +303,14 @@ export class ReportsService {
           },
           shift: {
             name: row.shift_name,
-            shift_prefix: row.shift_prefix || '?',
+            shift_prefix: row.shift_prefix || row.prefix || '?', // Aseguramos que tome el prefijo disponible
             type: row.shift_type || 'N/A',
             start_time: row.start_time,
             end_time: row.end_time,
             start_time_2: row.start_time_2,
             end_time_2: row.end_time_2,
-            lunch_start: row.lunch_start,
-            lunch_end: row.lunch_end
+            lunch_start: row.lunch_start || null,
+            lunch_end: row.lunch_end || null
           },
           cost_center: row.cost_center_name,
           markings: []
