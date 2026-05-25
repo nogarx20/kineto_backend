@@ -511,8 +511,18 @@ export class ReportsService {
         status = markingDate > lateLimit ? 'LateEntry' : 'OnTime';
       } else if (winOut1?.inWindow) {
         type = 'OUT';
-        const earlyLimit = new Date(winOut1.target.getTime() - (travelTolerance * 60000));
-        status = markingDate < earlyLimit ? 'EarlyDeparture' : 'OnTime';
+        const shiftEndTime = winOut1.target.getTime();
+        const toleranceMs = travelTolerance * 60000;
+        const earlyLimit = shiftEndTime - toleranceMs;
+        const lateLimit = shiftEndTime + toleranceMs;
+
+        if (markingDate.getTime() < earlyLimit) {
+          status = 'EarlyDeparture';
+        } else if (markingDate.getTime() > lateLimit) {
+          status = 'LateDeparture';
+        } else {
+          status = 'OnTime';
+        }
       } else if (shift.shift_type === 'Partido') {
         const winIn2 = checkWindow(shift.start_time_2, shift.entry_start_buffer || 0, shift.entry_end_buffer || 0);
         const winOut2 = checkWindow(shift.end_time_2, shift.exit_start_buffer || 0, shift.exit_end_buffer || 0);
@@ -522,8 +532,17 @@ export class ReportsService {
           status = markingDate > lateLimit ? 'LateEntry' : 'OnTime';
         } else if (winOut2?.inWindow) {
           type = 'OUT';
-          const earlyLimit = new Date(winOut2.target.getTime() - (travelTolerance * 60000));
-          status = markingDate < earlyLimit ? 'EarlyDeparture' : 'OnTime';
+          const shiftEndTime = winOut2.target.getTime();
+          const toleranceMs = travelTolerance * 60000;
+          const earlyLimit = shiftEndTime - toleranceMs;
+          const lateLimit = shiftEndTime + toleranceMs;
+          if (markingDate.getTime() < earlyLimit) {
+            status = 'EarlyDeparture';
+          } else if (markingDate.getTime() > lateLimit) {
+            status = 'LateDeparture';
+          } else {
+            status = 'OnTime';
+          }
         } else {
           type = 'N/A';
           status = 'NoTurn';
