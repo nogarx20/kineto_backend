@@ -376,6 +376,26 @@ export class ReportsService {
       const net_ms = worked_ms > 0 ? Math.max(0, worked_ms - lunch_ms) : 0;
       const worked_hours = (net_ms / (1000 * 60 * 60)).toFixed(2);
 
+      // --- CÁLCULO DE HORAS PLANIFICADAS DEL TURNO ---
+      let plannedHours = 0;
+      const getDuration = (start?: string, end?: string) => {
+        if (!start || !end) return 0;
+        const [h1, m1] = start.split(':').map(Number);
+        const [h2, m2] = end.split(':').map(Number);
+        let d = (h2 * 60 + m2) - (h1 * 60 + m1);
+        if (d < 0) d += 1440;
+        return d / 60;
+      };
+
+      if (g.shift && g.shift.type !== 'Descanso' && g.shift.type !== 'N/A') {
+        plannedHours += getDuration(g.shift.start_time, g.shift.end_time);
+        if (g.shift.type === 'Partido' && g.shift.start_time_2 && g.shift.end_time_2) {
+          plannedHours += getDuration(g.shift.start_time_2, g.shift.end_time_2);
+        } else if (g.shift.type === 'Simple' && g.shift.lunch_start && g.shift.lunch_end) {
+          plannedHours -= getDuration(g.shift.lunch_start, g.shift.lunch_end);
+        }
+      }
+
       const collabNovelties = novelties.filter((n: any) => n.collaborator_id === g.collaborator.id).map((n: any) => {
         let hours = 0;
         if (n.novelty_period === 'Hora') {
@@ -385,54 +405,27 @@ export class ReportsService {
           if (diff < 0) diff += 1440;
           hours = diff / 60;
         } else {
-          // Para novedades por día, las horas deben ser las totales del turno asignado
-          if (g.shift && g.shift.type !== 'Descanso' && g.shift.type !== 'N/A') {
-            let shiftHours = 0;
-            const getShiftDuration = (start?: string, end?: string) => {
-              if (!start || !end) return 0;
-              const [h1, m1] = start.split(':').map(Number);
-              const [h2, m2] = end.split(':').map(Number);
-              let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
-              if (diff < 0) diff += 1440; // Manejar turnos nocturnos que cruzan la medianoche
-              return diff / 60;
-            };
-
-            shiftHours += getShiftDuration(g.shift.start_time, g.shift.end_time);
-            if (g.shift.type === 'Partido' && g.shift.start_time_2 && g.shift.end_time_2) {
-              shiftHours += getShiftDuration(g.shift.start_time_2, g.shift.end_time_2);
-            }
-            // Restar almuerzo para turnos simples
-            if (g.shift.type === 'Simple' && g.shift.lunch_start && g.shift.lunch_end) {
-              shiftHours -= getShiftDuration(g.shift.lunch_start, g.shift.lunch_end);
-            }
-            hours = shiftHours;
-          } else {
-            hours = 0; // Si no hay turno o es de descanso, la novedad por día cuenta 0 horas
-          }
+          hours = plannedHours;
         }
         return { ...n, applied_hours: hours.toFixed(2) };
       });
 
-      const hasDayNov = collabNovelties.some((n: any) => n.novelty_period === 'Día');
+      const noveltyTotal = collabNovelties.reduce((sum: number, n: any) => sum + parseFloat(n.applied_hours), 0);
+      const totalHours = parseFloat(worked_hours) + noveltyTotal;
 
-      let general_status = 'Inasistencia';
-      if (hasDayNov) {
-        general_status = 'Novedad';
-      } else if (!g.schedule_id) {
-        general_status = collabNovelties.length > 0 ? 'Observaciones' : 'Libre / Sin Turno';
+      let general_status = 'Ausencia';
+      if (!g.schedule_id) {
+        general_status = (g.markings.length > 0 || collabNovelties.length > 0) ? 'Observaciones' : 'Libre / Sin Turno';
       } else {
-      const required = isPartido ? 4 : 2;
-      const present = [in1, out1, in2, out2].filter(Boolean).length;
-      if (present === 0) {
-          general_status = collabNovelties.length > 0 ? 'Cumplido (Novedad)' : 'Inasistencia';
-      } else if (present < required) {
-        general_status = 'Incompleto';
-      } else {
-        const hasBadStatus = [in1, out1, in2, out2].filter(Boolean).some((m: any) => 
-          ['LateEntry', 'EarlyDeparture'].includes(m.status)
-        );
-        general_status = hasBadStatus ? 'Observaciones' : 'Cumplido';
-      }
+        if (g.markings.length === 0 && collabNovelties.length === 0) {
+          general_status = 'Ausencia';
+        } else if (Math.abs(totalHours - plannedHours) < 0.05) {
+          general_status = 'Completado';
+        } else if (totalHours > plannedHours) {
+          general_status = 'Sobretiempo';
+        } else {
+          general_status = 'Incompleto';
+        }
       }
 
       return { ...g, in1, out1, in2, out2, worked_hours, novelties: collabNovelties, general_status };
