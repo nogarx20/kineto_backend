@@ -319,6 +319,7 @@ export class ReportsService {
             lunch_end: row.lunch_end
           },
           cost_center: row.cost_center_name,
+          overtime_status: row.overtime_status,
           markings: []
         });
       }
@@ -456,6 +457,9 @@ export class ReportsService {
     });
   }
 
+  async updateOvertimeStatus(companyId: string, scheduleId: string, status: string) {
+    return await this.repository.updateOvertimeStatus(companyId, scheduleId, status);
+  }
   /**
    * Realiza el análisis técnico de un marcaje basado en reglas de negocio (Horarios, Geocercas, Tolerancias)
    */
