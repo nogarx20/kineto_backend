@@ -13,6 +13,7 @@ router.get('/stats', rbacMiddleware('dashboard.view'), controller.getStats);
 router.get('/audit-logs', rbacMiddleware('security.view'), controller.getAuditLogs);
 router.get('/activity-log', rbacMiddleware('reports.view'), controller.getActivityLog);
 router.get('/attendance-control', rbacMiddleware('reports.view'), controller.getAttendanceControl);
+router.patch('/overtime-status/:id', rbacMiddleware('reports.update'), controller.updateOvertimeStatus);
 router.post('/activity-log/validate/:id', rbacMiddleware('reports.view'), controller.validateActivityLogEntry);
 router.patch('/activity-log/:id', rbacMiddleware('reports.update'), controller.updateActivityLogEntry);
 router.delete('/activity-log/:id', rbacMiddleware('reports.delete'), controller.deleteActivityLogEntry);
