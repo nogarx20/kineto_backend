@@ -303,7 +303,7 @@ export class ReportsService {
           },
           shift: {
             name: row.shift_name,
-            shift_prefix: row.shift_prefix || '?',
+            shift_prefix: row.shift_prefix || 'TD',
             type: row.shift_type || 'N/A',
             start_time: row.start_time,
             end_time: row.end_time,
