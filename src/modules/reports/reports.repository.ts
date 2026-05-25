@@ -263,39 +263,44 @@ export class ReportsRepository {
   async getAttendanceControlData(companyId: string, date: string) {
     const sql = `
       SELECT 
-        s.id as schedule_id,
-        s.date,
         c.id as collaborator_id,
         c.first_name,
         c.last_name,
         c.identification,
         c.email,
         c.photo,
+        s.id as schedule_id,
+        s.date,
         sh.name as shift_name,
+        sh.prefix as shift_prefix,
         sh.shift_type,
         sh.start_time,
         sh.end_time,
         sh.start_time_2,
         sh.end_time_2,
+        sh.lunch_start,
+        sh.lunch_end,
         cc.name as cost_center_name,
+        ct.weekly_hours,
+        ct.working_days,
         a.id as marking_id,
         a.timestamp as marking_timestamp,
         a.type as marking_type,
         a.status as marking_status,
         a.biometric_method
-      FROM schedules s
-      INNER JOIN collaborators c ON s.collaborator_id = c.id
-      INNER JOIN shifts sh ON s.shift_id = sh.id
-      LEFT JOIN cost_centers cc ON s.cost_center_id = cc.id
+      FROM collaborators c
+      INNER JOIN contracts ct ON c.id = ct.collaborator_id 
+        AND ct.status = 'Activo' AND ct.onDelete = 0
+        AND DATE(?) BETWEEN DATE(ct.start_date) AND COALESCE(DATE(ct.end_date), '9999-12-31')
+      LEFT JOIN schedules s ON s.collaborator_id = c.id AND DATE(s.date) = DATE(?) AND s.onDelete = 0
+      LEFT JOIN shifts sh ON s.shift_id = sh.id
+      LEFT JOIN cost_centers cc ON s.cost_center_id = cc.id OR ct.cost_center_id = cc.id
       LEFT JOIN attendance_records a ON a.schedule_id = s.id AND a.onDelete = 0 
         AND a.status IN ('OnTime', 'EarlyEntry', 'LateEntry', 'EarlyDeparture', 'LateDeparture')
-      WHERE s.company_id = ? 
-        AND DATE(s.date) = DATE(?) 
-        AND s.onDelete = 0
-        AND sh.shift_type <> 'Descanso'
+      WHERE c.company_id = ? AND c.onDelete = 0
       ORDER BY c.last_name, c.first_name, a.timestamp ASC
     `;
-    const [rows]: any = await pool.query(sql, [companyId, date]);
+    const [rows]: any = await pool.query(sql, [date, date, companyId]);
     return rows;
   }
 }
