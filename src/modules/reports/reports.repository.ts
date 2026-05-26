@@ -286,7 +286,6 @@ export class ReportsRepository {
         cc.name as cost_center_name,
         ct.weekly_hours,
         ct.working_days,
-        s.overtime_status,
         ct.discount_lunch,
         a.id as marking_id,
         a.timestamp as marking_timestamp,
