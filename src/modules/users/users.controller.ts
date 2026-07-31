@@ -75,7 +75,7 @@ export class UserController {
       }
 
       const changes: any = {};
-      const fields = ['email', 'first_name', 'last_name', 'is_locked'];
+      const fields = ['email', 'first_name', 'last_name', 'is_locked', 'collaborator_id'];
       fields.forEach(field => {
         const newVal = field === 'is_locked' ? (body[field] ? 1 : 0) : body[field];
         if (oldData && oldData[field] !== newVal) {
