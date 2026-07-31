@@ -29,17 +29,17 @@ export class UserRepository {
   }
 
   async create(user: any) {
-    const { id, company_id, email, password, first_name, last_name, photo } = user;
+    const { id, company_id, email, password, first_name, last_name, photo, collaborator_id } = user;
     await pool.execute(
-      'INSERT INTO users (id, company_id, email, password, first_name, last_name, photo, onDelete) VALUES (?, ?, ?, ?, ?, ?, ?, 0)',
-+      [id, company_id, email, password, first_name, last_name, photo || null]
+      'INSERT INTO users (id, company_id, email, password, first_name, last_name, photo, collaborator_id, onDelete) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)',
+      [id, company_id, email, password, first_name, last_name, photo || null, collaborator_id || null]
     );
     return id;
   }
 
   async listByCompany(companyId: string) {
     const [rows]: any = await pool.execute(`
-      SELECT u.id, u.email, u.first_name, u.last_name, u.is_active, u.is_locked, u.failed_attempts, u.createdAt, u.photo,
+      SELECT u.id, u.email, u.first_name, u.last_name, u.is_active, u.is_locked, u.failed_attempts, u.createdAt, u.photo, u.collaborator_id,
       (
         SELECT JSON_ARRAYAGG(JSON_OBJECT('id', r.id, 'name', r.name, 'is_active', r.is_active))
         FROM user_roles ur
