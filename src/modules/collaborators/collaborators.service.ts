@@ -84,4 +84,13 @@ export class CollaboratorService {
     await this.repository.createCostCenter({ ...data, id, company_id: companyId });
     return { id, ...data };
   }
+
+  // --- User Linkage ---
+  async linkUser(companyId: string, collaboratorId: string, userId: string) {
+    return await this.repository.linkUser(companyId, collaboratorId, userId);
+  }
+
+  async unlinkUser(companyId: string, collaboratorId: string) {
+    return await this.repository.unlinkUser(companyId, collaboratorId);
+  }
 }
