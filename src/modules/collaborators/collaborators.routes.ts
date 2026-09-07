@@ -15,6 +15,8 @@ router.post('/', rbacMiddleware('collaborators.personal.create'), controller.cre
 router.put('/:id', rbacMiddleware('collaborators.personal.update'), controller.update);
 router.delete('/:id', rbacMiddleware('collaborators.personal.delete'), controller.delete);
 router.get('/:id/fingerprints', rbacMiddleware('collaborators.personal.view'), controller.getFingerprints);
+router.post('/:id/link-user', rbacMiddleware('collaborators.personal.update'), controller.linkUser);
+router.post('/:id/unlink-user', rbacMiddleware('collaborators.personal.update'), controller.unlinkUser);
 
 // Contratos
 router.get('/contracts', rbacMiddleware('collaborators.contracts.view'), controller.listContracts);
