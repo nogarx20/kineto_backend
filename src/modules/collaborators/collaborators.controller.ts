@@ -111,6 +111,38 @@ export class CollaboratorController {
     }
   }
 
+  // --- Vinculación con Usuario del Sistema ---
+  async linkUser(req: Request, res: Response) {
+    try {
+      const { id } = (req as any).params;
+      const { userId } = (req as any).body;
+      const user = (req as any).user;
+
+      if (!userId) {
+        return (res as any).status(400).json({ error: 'Debe especificar el identificador del usuario a vincular.' });
+      }
+
+      const result = await service.linkUser(user.company_id, id, userId);
+      await logAudit(req, 'LINK_USER', 'collaborators', id, { linked_user_id: userId });
+      (res as any).json(result);
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
+  }
+
+  async unlinkUser(req: Request, res: Response) {
+    try {
+      const { id } = (req as any).params;
+      const user = (req as any).user;
+
+      const result = await service.unlinkUser(user.company_id, id);
+      await logAudit(req, 'UNLINK_USER', 'collaborators', id, { collaborator_id: id });
+      (res as any).json(result);
+    } catch (err: any) {
+      (res as any).status(400).json({ error: err.message });
+    }
+  }
+
   // --- Contratos (Nómina) ---
   async listContracts(req: Request, res: Response) {
     try {
