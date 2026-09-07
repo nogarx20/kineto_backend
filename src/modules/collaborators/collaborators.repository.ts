@@ -23,14 +23,22 @@ export class CollaboratorRepository {
       EXISTS(SELECT 1 FROM collaborator_biometrics cb WHERE cb.collaborator_id = c.id) AS has_faceid,
       (SELECT COUNT(*) FROM collaborator_fingerprints cf WHERE cf.collaborator_id = c.id) AS finger_count,
       con.marking_zone_id,
-      mz.name AS marking_zone_name
+      mz.name AS marking_zone_name,
+      u.id AS user_id,
+      u.email AS user_email,
+      u.first_name AS user_first_name,
+      u.last_name AS user_last_name,
+      u.is_locked AS user_is_locked,
+      u.is_active AS user_is_active,
+      u.photo AS user_photo
       FROM collaborators c
       LEFT JOIN contracts con ON con.collaborator_id = c.id AND con.onDelete = 0 AND con.status = 'Activo'
       LEFT JOIN cost_centers cc ON con.cost_center_id = cc.id AND cc.onDelete = 0
       LEFT JOIN marking_zones mz ON con.marking_zone_id = mz.id
+      LEFT JOIN users u ON u.collaborator_id = c.id AND u.company_id = ? AND u.onDelete = 0
       WHERE c.company_id = ? AND c.onDelete = 0
       ORDER BY c.first_name, c.last_name
-    `, [companyId]);
+    `, [companyId, companyId]);
 
     const collaboratorsMap = new Map();
 
@@ -41,6 +49,13 @@ export class CollaboratorRepository {
             collaboratorsMap.set(row.id, {
                 ...row,
                 status: statusMap[row.collab_status_id] || 'Pending',
+                user_id: row.user_id || null,
+                user_email: row.user_email || null,
+                user_first_name: row.user_first_name || null,
+                user_last_name: row.user_last_name || null,
+                user_is_locked: row.user_is_locked !== null && row.user_is_locked !== undefined ? !!row.user_is_locked : null,
+                user_is_active: row.user_is_active !== null && row.user_is_active !== undefined ? !!row.user_is_active : null,
+                user_photo: row.user_photo || null,
                 contracts: [],
                 // Mantener compatibilidad con campos planos (usando el activo o el último encontrado)
                 last_contract_code: null,
@@ -338,5 +353,49 @@ export class CollaboratorRepository {
       ORDER BY cc.name
     `, [companyId]);
     return rows.map((row: any) => ({ ...row, is_active: !!row.is_active }));
+  }
+
+  // --- User Linkage ---
+  async linkUser(companyId: string, collaboratorId: string, userId: string) {
+    // 1. Verificar que el colaborador exista y pertenezca a la empresa
+    const [collab]: any = await pool.execute(
+      'SELECT id FROM collaborators WHERE id = ? AND company_id = ? AND onDelete = 0',
+      [collaboratorId, companyId]
+    );
+    if (collab.length === 0) throw new Error('Colaborador no encontrado.');
+
+    // 2. Verificar que el usuario exista y pertenezca a la empresa
+    const [user]: any = await pool.execute(
+      'SELECT id, collaborator_id FROM users WHERE id = ? AND company_id = ? AND onDelete = 0',
+      [userId, companyId]
+    );
+    if (user.length === 0) throw new Error('Usuario del sistema no encontrado.');
+
+    // 3. Verificar que el usuario no esté ya asignado a otro colaborador
+    if (user[0].collaborator_id && user[0].collaborator_id !== collaboratorId) {
+      throw new Error('El usuario seleccionado ya se encuentra vinculado a otro colaborador.');
+    }
+
+    // 4. Limpiar cualquier usuario que estuviese previamente asignado a este colaborador
+    await pool.execute(
+      'UPDATE users SET collaborator_id = NULL WHERE collaborator_id = ? AND company_id = ?',
+      [collaboratorId, companyId]
+    );
+
+    // 5. Vincular el usuario al colaborador
+    await pool.execute(
+      'UPDATE users SET collaborator_id = ? WHERE id = ? AND company_id = ?',
+      [collaboratorId, userId, companyId]
+    );
+
+    return { success: true, collaborator_id: collaboratorId, user_id: userId };
+  }
+
+  async unlinkUser(companyId: string, collaboratorId: string) {
+    await pool.execute(
+      'UPDATE users SET collaborator_id = NULL WHERE collaborator_id = ? AND company_id = ?',
+      [collaboratorId, companyId]
+    );
+    return { success: true, collaborator_id: collaboratorId };
   }
 }
